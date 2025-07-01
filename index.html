@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nexus Attendance | AI-Powered</title>
+    
+    <!-- Tailwind CSS with custom config -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#3b82f6',
+                            600: '#2563eb',
+                            700: '#1d4ed8',
+                        },
+                        futuristic: {
+                            100: '#e0f7ff',
+                            200: '#bae6ff',
+                            300: '#82cfff',
+                            400: '#33b1ff',
+                            500: '#1192e8',
+                            600: '#0072c3',
+                            700: '#00539a',
+                        },
+                        dark: {
+                            800: '#1e293b',
+                            900: '#0f172a',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Inter"', 'system-ui', 'sans-serif'],
+                        mono: ['"Roboto Mono"', 'monospace'],
+                    },
+                    animation: {
+                        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' },
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet">
+    
+    <!-- Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        :root {
+            --glass-effect: rgba(255, 255, 255, 0.1);
+            --glass-border: 1px solid rgba(255, 255, 255, 0.2);
+            --glass-shadow: 0 4px 30px rgba(0, 0, 0, 0.1);
+            --backdrop-blur: blur(10px);
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: white;
+            min-height: 100vh;
+        }
+        
+        .glass-card {
+            background: var(--glass-effect);
+            backdrop-filter: var(--backdrop-blur);
+            -webkit-backdrop-filter: var(--backdrop-blur);
+            border: var(--glass-border);
+            box-shadow: var(--glass-shadow);
+            border-radius: 16px;
+        }
+        
+        .video-container {
+            position: relative;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+            transform-style: preserve-3d;
+            perspective: 1000px;
+        }
+        
+        .video-container::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.4) 0%, rgba(99, 102, 241, 0.2) 100%);
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        .btn-futuristic {
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+            border: none;
+            color: white;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .btn-futuristic:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15);
+        }
+        
+        .btn-futuristic:active {
+            transform: translateY(0);
+        }
+        
+        .btn-futuristic::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.2) 0%, rgba(255, 255, 255, 0) 100%);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .btn-futuristic:hover::after {
+            opacity: 1;
+        }
+        
+        .input-futuristic {
+            background: rgba(30, 41, 59, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: white;
+            transition: all 0.3s ease;
+        }
+        
+        .input-futuristic:focus {
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+            outline: none;
+        }
+        
+        .input-futuristic:read-only {
+            background: rgba(30, 41, 59, 0.5);
+            color: rgba(255, 255, 255, 0.7);
+        }
+        
+        .loader {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .status-pulse {
+            animation: pulse-slow 2s infinite;
+        }
+        
+        .face-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 2;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .face-overlay.active {
+            opacity: 1;
+        }
+        
+        .face-marker {
+            width: 150px;
+            height: 150px;
+            border: 3px solid #3b82f6;
+            border-radius: 50%;
+            position: relative;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5);
+        }
+        
+        .face-marker::before {
+            content: 'FACE DETECTED';
+            position: absolute;
+            bottom: -40px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        
+        .holographic-effect {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(99, 102, 241, 0.1) 100%);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .holographic-effect::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(
+                to bottom right,
+                rgba(255, 255, 255, 0) 0%,
+                rgba(255, 255, 255, 0) 40%,
+                rgba(255, 255, 255, 0.05) 50%,
+                rgba(255, 255, 255, 0) 60%,
+                rgba(255, 255, 255, 0) 100%
+            );
+            transform: rotate(30deg);
+            animation: shine 3s infinite;
+        }
+        
+        @keyframes shine {
+            0% { transform: translateX(-100%) rotate(30deg); }
+            100% { transform: translateX(100%) rotate(30deg); }
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center p-4">
+    <div class="w-full max-w-md mx-auto glass-card p-6 md:p-8 space-y-6">
+        <!-- Header -->
+        <header class="text-center space-y-2">
+            <div class="flex justify-center items-center space-x-3">
+                <i class="fas fa-robot text-futuristic-400 text-2xl"></i>
+                <h1 class="text-2xl md:text-3xl font-bold bg-gradient-to-r from-futuristic-400 to-futuristic-600 bg-clip-text text-transparent">NEXUS ATTENDANCE</h1>
+            </div>
+            <p class="text-sm text-gray-300">AI-powered biometric attendance system</p>
+            <div class="flex justify-center items-center space-x-2 text-xs text-futuristic-400">
+                <span class="flex items-center">
+                    <span class="w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+                    <span>LIVE</span>
+                </span>
+                <span>•</span>
+                <span id="current-time" class="font-mono"></span>
+                <span>•</span>
+                <span id="current-date"></span>
+            </div>
+        </header>
+
+        <!-- Main Content -->
+        <main id="app-content" class="space-y-6">
+            <!-- Camera Feed -->
+            <div class="video-container holographic-effect">
+                <video id="camera-feed" autoplay playsinline class="w-full h-auto"></video>
+                <canvas id="photo-canvas" class="hidden"></canvas>
+                
+                <!-- Face detection overlay -->
+                <div id="face-overlay" class="face-overlay">
+                    <div class="face-marker"></div>
+                </div>
+                
+                <!-- Camera controls -->
+                <div class="absolute bottom-3 right-3 flex space-x-2">
+                    <button id="switch-camera-btn" class="bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-all">
+                        <i class="fas fa-camera-retro text-sm"></i>
+                    </button>
+                    <button id="flash-btn" class="bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-all hidden">
+                        <i class="fas fa-bolt text-sm"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Employee Info -->
+            <div class="space-y-4">
+                <div>
+                    <label for="emp-id" class="block text-sm font-medium text-gray-300 mb-2">EMPLOYEE ID</label>
+                    <input type="text" id="emp-id" placeholder="Scan your ID card or enter manually" 
+                           class="input-futuristic w-full px-4 py-3 rounded-lg focus:ring-2 focus:ring-futuristic-500">
+                </div>
+                
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-300 mb-2">FULL NAME</label>
+                        <input type="text" id="name" readonly 
+                               class="input-futuristic w-full px-4 py-3 rounded-lg">
+                    </div>
+                    <div>
+                        <label for="department" class="block text-sm font-medium text-gray-300 mb-2">DEPARTMENT</label>
+                        <input type="text" id="department" readonly 
+                               class="input-futuristic w-full px-4 py-3 rounded-lg">
+                    </div>
+                </div>
+                
+                <!-- Location Options -->
+                <div id="location-section" class="space-y-2">
+                    <div class="flex items-center justify-between">
+                        <label class="block text-sm font-medium text-gray-300">WORK LOCATION</label>
+                        <button id="location-toggle" class="text-xs text-futuristic-400 hover:text-futuristic-300 transition-colors">
+                            <i class="fas fa-edit mr-1"></i> Change
+                        </button>
+                    </div>
+                    <div id="location-display" class="flex items-center space-x-2 px-4 py-3 bg-dark-800 rounded-lg">
+                        <i class="fas fa-map-marker-alt text-futuristic-400"></i>
+                        <span id="location-text">Office HQ</span>
+                    </div>
+                    <div id="location-options" class="hidden space-y-2 mt-2">
+                        <div class="flex items-center space-x-3">
+                            <input type="radio" id="loc-office" name="location" value="Office HQ" checked 
+                                   class="h-4 w-4 text-futuristic-500 focus:ring-futuristic-500">
+                            <label for="loc-office" class="text-sm text-gray-300">Office HQ</label>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <input type="radio" id="loc-remote" name="location" value="Remote" 
+                                   class="h-4 w-4 text-futuristic-500 focus:ring-futuristic-500">
+                            <label for="loc-remote" class="text-sm text-gray-300">Remote Work</label>
+                        </div>
+                        <div class="flex items-center space-x-3">
+                            <input type="radio" id="loc-field" name="location" value="Field" 
+                                   class="h-4 w-4 text-futuristic-500 focus:ring-futuristic-500">
+                            <label for="loc-field" class="text-sm text-gray-300">Field Work</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="grid grid-cols-2 gap-4">
+                <button id="in-btn" class="btn-futuristic py-3 px-4 rounded-lg flex items-center justify-center space-x-2">
+                    <span class="btn-text">CHECK IN</span>
+                    <i class="fas fa-sign-in-alt"></i>
+                </button>
+                <button id="out-btn" class="btn-futuristic py-3 px-4 rounded-lg bg-gradient-to-r from-red-500 to-red-600 flex items-center justify-center space-x-2">
+                    <span class="btn-text">CHECK OUT</span>
+                    <i class="fas fa-sign-out-alt"></i>
+                </button>
+            </div>
+            
+            <!-- Status Message -->
+            <div id="status-message" class="hidden px-4 py-3 rounded-lg text-sm font-medium text-center"></div>
+        </main>
+        
+        <!-- Footer -->
+        <footer class="text-center pt-4 border-t border-gray-800">
+            <p class="text-xs text-gray-500">
+                <span class="text-futuristic-400">v2.1.0</span> • 
+                <span id="connection-status" class="text-green-400"><i class="fas fa-wifi mr-1"></i> Connected</span> • 
+                <span>© 2023 Nexus Systems</span>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        // ===================================================================
+        // Configuration - Replace with your actual GAS endpoint
+        // ===================================================================
+        const GAS_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec';
+        const ENABLE_FACE_DETECTION = false; // Set to true if using face detection API
+        // ===================================================================
+
+        // DOM Elements
+        const video = document.getElementById('camera-feed');
+        const canvas = document.getElementById('photo-canvas');
+        const faceOverlay = document.getElementById('face-overlay');
+        const empIdInput = document.getElementById('emp-id');
+        const nameInput = document.getElementById('name');
+        const departmentInput = document.getElementById('department');
+        const inBtn = document.getElementById('in-btn');
+        const outBtn = document.getElementById('out-btn');
+        const statusMessage = document.getElementById('status-message');
+        const switchCameraBtn = document.getElementById('switch-camera-btn');
+        const flashBtn = document.getElementById('flash-btn');
+        const locationToggle = document.getElementById('location-toggle');
+        const locationOptions = document.getElementById('location-options');
+        const locationDisplay = document.getElementById('location-display');
+        const locationText = document.getElementById('location-text');
+        const currentTimeElement = document.getElementById('current-time');
+        const currentDateElement = document.getElementById('current-date');
+        const connectionStatus = document.getElementById('connection-status');
+
+        // State variables
+        let employeeDatabase = {};
+        let videoDevices = [];
+        let currentDeviceIndex = 0;
+        let currentStream = null;
+        let isBackCamera = true;
+        let faceDetectionInterval = null;
+        let lastEmployeeId = '';
+        let isOnline = true;
+
+        // Initialize application
+        document.addEventListener('DOMContentLoaded', () => {
+            initClock();
+            checkConnection();
+            initCamera();
+            fetchEmployeeData();
+            setupEventListeners();
+            
+            // Check connection status periodically
+            setInterval(checkConnection, 5000);
+        });
+
+        // Clock functionality
+        function initClock() {
+            updateClock();
+            setInterval(updateClock, 1000);
+        }
+
+        function updateClock() {
+            const now = new Date();
+            currentTimeElement.textContent = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+            currentDateElement.textContent = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+        }
+
+        // Connection monitoring
+        function checkConnection() {
+            const wasOnline = isOnline;
+            isOnline = navigator.onLine;
+            
+            if (isOnline !== wasOnline) {
+                if (isOnline) {
+                    connectionStatus.innerHTML = '<i class="fas fa-wifi mr-1"></i> Connected';
+                    connectionStatus.className = 'text-green-400';
+                    showStatus('Back online. System ready.', false);
+                    fetchEmployeeData(); // Refresh data when reconnected
+                } else {
+                    connectionStatus.innerHTML = '<i class="fas fa-unlink mr-1"></i> Offline';
+                    connectionStatus.className = 'text-red-400';
+                    showStatus('Connection lost. Working in offline mode.', true);
+                }
+            }
+        }
+
+        // Camera initialization
+        async function initCamera() {
+            try {
+                // Check camera permissions
+                if (!navigator.mediaDevices?.getUserMedia) {
+                    throw new Error('Camera API not supported');
+                }
+                
+                // Get available devices
+                const devices = await navigator.mediaDevices.enumerateDevices();
+                videoDevices = devices.filter(device => device.kind === 'videoinput');
+                
+                // Start with back camera if available
+                if (videoDevices.length > 1) {
+                    isBackCamera = true;
+                    switchCameraBtn.classList.remove('hidden');
+                }
+                
+                await startCameraStream();
+                
+                // Initialize face detection if enabled
+                if (ENABLE_FACE_DETECTION) {
+                    initFaceDetection();
+                }
+                
+            } catch (error) {
+                console.error('Camera initialization error:', error);
+                showStatus('Camera access denied. Please enable camera permissions.', true);
+                video.style.display = 'none';
+            }
+        }
+
+        async function startCameraStream() {
+            // Stop any existing stream
+            if (currentStream) {
+                currentStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Set constraints
+            const constraints = {
+                video: {
+                    deviceId: videoDevices.length ? { exact: videoDevices[currentDeviceIndex].deviceId } : undefined,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 },
+                    facingMode: isBackCamera ? { exact: 'environment' } : { exact: 'user' }
+                }
+            };
+            
+            try {
+                currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = currentStream;
+                
+                // Check for torch/flash support
+                if ('torch' in currentStream.getVideoTracks()[0].getCapabilities()) {
+                    flashBtn.classList.remove('hidden');
+                }
+                
+            } catch (error) {
+                console.error('Camera stream error:', error);
+                showStatus('Failed to start camera. Please try again.', true);
+            }
+        }
+
+        function initFaceDetection() {
+            // This would integrate with a face detection API
+            // For demo purposes, we'll simulate face detection
+            faceDetectionInterval = setInterval(() => {
+                if (Math.random() > 0.7) { // Random face detection for demo
+                    faceOverlay.classList.add('active');
+                    setTimeout(() => faceOverlay.classList.remove('active'), 2000);
+                }
+            }, 3000);
+        }
+
+        // Camera controls
+        async function switchCamera() {
+            currentDeviceIndex = (currentDeviceIndex + 1) % videoDevices.length;
+            isBackCamera = !isBackCamera;
+            await startCameraStream();
+        }
+
+        async function toggleFlash() {
+            try {
+                const track = currentStream.getVideoTracks()[0];
+                await track.applyConstraints({
+                    advanced: [{ torch: !track.getSettings().torch }]
+                });
+                flashBtn.classList.toggle('bg-futuristic-500');
+            } catch (error) {
+                console.error('Flash error:', error);
+            }
+        }
+
+        // Employee data handling
+        async function fetchEmployeeData() {
+            if (!isOnline) {
+                // Try to load from cache if offline
+                const cachedData = localStorage.getItem('employeeDatabase');
+                if (cachedData) {
+                    employeeDatabase = JSON.parse(cachedData);
+                    empIdInput.placeholder = 'Enter ID (offline mode)';
+                    showStatus('Using cached employee data. Limited functionality.', true);
+                    return;
+                } else {
+                    showStatus('No cached data available. Please connect to network.', true);
+                    return;
+                }
+            }
+            
+            try {
+                showStatus('Loading employee database...', false);
+                
+                const response = await fetchWithTimeout(`${GAS_URL}?action=getEmployees`, {
+                    timeout: 5000
+                });
+                
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+                
+                employeeDatabase = await response.json();
+                
+                // Cache the data for offline use
+                localStorage.setItem('employeeDatabase', JSON.stringify(employeeDatabase));
+                
+                empIdInput.disabled = false;
+                empIdInput.placeholder = 'Scan your ID card or enter manually';
+                showStatus('System ready. Enter your Employee ID.', false);
+                
+            } catch (error) {
+                console.error('Employee data fetch error:', error);
+                showStatus('Failed to load employee data. Trying cached version...', true);
+                
+                // Fallback to cached data
+                const cachedData = localStorage.getItem('employeeDatabase');
+                if (cachedData) {
+                    employeeDatabase = JSON.parse(cachedData);
+                    empIdInput.placeholder = 'Enter ID (offline mode)';
+                } else {
+                    empIdInput.placeholder = 'Data load failed';
+                }
+            }
+        }
+
+        function fetchWithTimeout(url, options = {}) {
+            const { timeout = 8000 } = options;
+            
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            
+            return fetch(url, {
+                ...options,
+                signal: controller.signal
+            }).finally(() => clearTimeout(timeoutId));
+        }
+
+        function handleEmployeeInput() {
+            const empId = empIdInput.value.trim().toUpperCase();
+            
+            if (!empId) {
+                nameInput.value = '';
+                departmentInput.value = '';
+                return;
+            }
+            
+            // Check if this is a new ID to avoid unnecessary updates
+            if (empId === lastEmployeeId) return;
+            lastEmployeeId = empId;
+            
+            const employee = employeeDatabase[empId];
+            
+            if (employee) {
+                nameInput.value = employee.name;
+                departmentInput.value = employee.department;
+                showStatus('Employee verified. Ready to mark attendance.', false);
+                
+                // Auto-focus the action buttons for faster workflow
+                inBtn.focus();
+            } else {
+                nameInput.value = '';
+                departmentInput.value = '';
+                showStatus('Employee ID not found.', true);
+            }
+        }
+
+        // Attendance marking
+        async function markAttendance(status) {
+            const empId = empIdInput.value.trim().toUpperCase();
+            const name = nameInput.value.trim();
+            
+            if (!empId || !name) {
+                showStatus('Please enter a valid Employee ID.', true);
+                empIdInput.focus();
+                return;
+            }
+            
+            const button = status === 'IN' ? inBtn : outBtn;
+            const originalText = button.querySelector('.btn-text').textContent;
+            
+            try {
+                // Show loading state
+                button.disabled = true;
+                button.querySelector('.btn-text').textContent = 'Processing...';
+                
+                // Capture photo
+                const photoData = await capturePhoto();
+                
+                // Get location
+                const location = document.querySelector('input[name="location"]:checked').value;
+                let coordinates = { latitude: null, longitude: null };
+                
+                if (navigator.geolocation) {
+                    try {
+                        const position = await new Promise((resolve, reject) => {
+                            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                                enableHighAccuracy: true,
+                                timeout: 5000,
+                                maximumAge: 0
+                            });
+                        });
+                        coordinates = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        };
+                    } catch (geoError) {
+                        console.warn('Geolocation error:', geoError);
+                    }
+                }
+                
+                // Prepare data
+                const timestamp = new Date().toISOString();
+                const attendanceData = {
+                    action: 'markAttendance',
+                    empId,
+                    name,
+                    department: departmentInput.value,
+                    status,
+                    timestamp,
+                    location,
+                    photo: photoData,
+                    coordinates
+                };
+                
+                // Show immediate feedback
+                showStatus(`Marking ${status.toLowerCase()}...`, false);
+                
+                if (isOnline) {
+                    // Send to server
+                    const response = await fetchWithTimeout(GAS_URL, {
+                        method: 'POST',
+                        body: JSON.stringify(attendanceData),
+                        headers: {
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.status === 'success') {
+                        showStatus(`Attendance ${status.toLowerCase()} recorded successfully!`, false);
+                        // Reset form
+                        empIdInput.value = '';
+                        nameInput.value = '';
+                        departmentInput.value = '';
+                        empIdInput.focus();
+                    } else {
+                        throw new Error(result.message || 'Server error');
+                    }
+                } else {
+                    // Offline mode - store locally
+                    const offlineRecords = JSON.parse(localStorage.getItem('offlineAttendance') || '[]');
+                    offlineRecords.push(attendanceData);
+                    localStorage.setItem('offlineAttendance', JSON.stringify(offlineRecords));
+                    
+                    showStatus(`Attendance ${status.toLowerCase()} saved offline. Will sync when online.`, false);
+                    // Reset form
+                    empIdInput.value = '';
+                    nameInput.value = '';
+                    departmentInput.value = '';
+                    empIdInput.focus();
+                }
+                
+            } catch (error) {
+                console.error('Attendance error:', error);
+                showStatus(`Failed to record attendance: ${error.message}`, true);
+            } finally {
+                // Reset button state
+                button.disabled = false;
+                button.querySelector('.btn-text').textContent = originalText;
+            }
+        }
+
+        async function capturePhoto() {
+            return new Promise((resolve) => {
+                const context = canvas.getContext('2d');
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                
+                // Draw video frame to canvas
+                context.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Add timestamp overlay
+                context.font = '14px Arial';
+                context.fillStyle = 'rgba(0, 0, 0, 0.5)';
+                context.fillRect(10, canvas.height - 30, 200, 20);
+                context.fillStyle = 'white';
+                context.fillText(new Date().toLocaleString(), 15, canvas.height - 15);
+                
+                // Convert to base64
+                const imageData = canvas.toDataURL('image/jpeg', 0.85);
+                resolve(imageData.split(',')[1]); // Return just the data part
+            });
+        }
+
+        // Status messages
+        function showStatus(message, isError) {
+            statusMessage.textContent = message;
+            statusMessage.className = isError 
+                ? 'px-4 py-3 rounded-lg text-sm font-medium text-center bg-red-900/50 text-red-200' 
+                : 'px-4 py-3 rounded-lg text-sm font-medium text-center bg-green-900/50 text-green-200';
+            statusMessage.classList.remove('hidden');
+            
+            // Auto-hide success messages after 5 seconds
+            if (!isError) {
+                setTimeout(() => {
+                    statusMessage.classList.add('hidden');
+                }, 5000);
+            }
+        }
+
+        // Event listeners
+        function setupEventListeners() {
+            // Employee ID input
+            empIdInput.addEventListener('input', debounce(handleEmployeeInput, 300));
+            
+            // Quick ID entry on paste
+            empIdInput.addEventListener('paste', (e) => {
+                setTimeout(handleEmployeeInput, 50);
+            });
+            
+            // Action buttons
+            inBtn.addEventListener('click', () => markAttendance('IN'));
+            outBtn.addEventListener('click', () => markAttendance('OUT'));
+            
+            // Camera controls
+            switchCameraBtn.addEventListener('click', switchCamera);
+            flashBtn.addEventListener('click', toggleFlash);
+            
+            // Location toggle
+            locationToggle.addEventListener('click', (e) => {
+                e.preventDefault();
+                locationOptions.classList.toggle('hidden');
+            });
+            
+            // Location selection
+            document.querySelectorAll('input[name="location"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    locationText.textContent = e.target.value;
+                    locationOptions.classList.add('hidden');
+                });
+            });
+            
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && document.activeElement === empIdInput) {
+                    handleEmployeeInput();
+                }
+                
+                // Quick check in/out with keyboard (Ctrl+I, Ctrl+O)
+                if (e.ctrlKey && e.key.toLowerCase() === 'i') {
+                    e.preventDefault();
+                    markAttendance('IN');
+                } else if (e.ctrlKey && e.key.toLowerCase() === 'o') {
+                    e.preventDefault();
+                    markAttendance('OUT');
+                }
+            });
+        }
+
+        // Utility functions
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+    </script>
+</body>
+</html>
