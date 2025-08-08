@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Scanner System - Production Ready</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+</head>
+<body>
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+    
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+    <div class="container">
+        <header class="header">
+            <h1>QR Scanner System</h1>
+            <p class="header-subtitle">Production Inventory Management</p>
+            <div class="version-info">
+                <span class="status status--info">v2.0 Production</span>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Status Bar -->
+            <section class="status-bar">
+                <div class="status-item">
+                    <div class="status-indicator" id="network-indicator">
+                        <div class="status-dot" id="network-dot"></div>
+                        <span id="network-status">Checking...</span>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <div class="status-indicator" id="camera-indicator">
+                        <div class="status-dot" id="camera-dot"></div>
+                        <span id="camera-status">Inactive</span>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <div class="status-indicator" id="sync-indicator">
+                        <div class="status-dot" id="sync-dot"></div>
+                        <span id="sync-status">All Synced</span>
+                        <button id="retry-sync-btn" class="btn btn--sm btn--outline hidden">Retry</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Camera Section -->
+            <section class="camera-section card">
+                <div class="card__body">
+                    <h3 class="section-title">QR Code Scanner</h3>
+                    <div id="qr-reader" class="camera-container">
+                        <div class="camera-placeholder">
+                            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M23 19C23 19.5304 22.7893 20.0391 22.4142 20.4142C22.0391 20.7893 21.5304 21 21 21H3C2.46957 21 1.96086 20.7893 1.58579 20.4142C1.21071 20.0391 1 19.5304 1 19V8C1 7.46957 1.21071 6.96086 1.58579 6.58579C1.96086 6.21071 2.46957 6 3 6H7L9 3H15L17 6H21C21.5304 6 22.0391 6.21071 22.4142 6.58579C22.7893 6.96086 23 7.46957 23 8V19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <circle cx="12" cy="14" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <p>Start scanning QR codes</p>
+                            <button id="start-camera-btn" class="btn btn--primary">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                    <polygon points="5 3 19 12 5 21 5 3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                </svg>
+                                Start Camera
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Product Information Section -->
+            <section class="product-section card">
+                <div class="card__body">
+                    <h3 class="section-title">Product Information</h3>
+                    <div class="empty-state" id="product-empty-state">
+                        <div class="empty-icon">
+                            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <path d="M20 7L4 7C2.89543 7 2 7.89543 2 9L2 19C2 20.1046 2.89543 21 4 21L20 21C21.1046 21 22 20.1046 22 19L22 9C22 7.89543 21.1046 7 20 7Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                <path d="M16 21L16 5C16 3.89543 15.1046 3 14 3L10 3C8.89543 3 8 3.89543 8 5L8 21" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </div>
+                        <h4>No Product Selected</h4>
+                        <p>Scan a QR code to load product information from Google Sheets</p>
+                    </div>
+                    
+                    <div class="product-form" id="product-form" style="display: none;">
+                        <div class="form-group">
+                            <label class="form-label" for="product-name">Product Name</label>
+                            <input type="text" id="product-name" class="form-control" readonly placeholder="Product will appear here">
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label" for="product-id">Product ID</label>
+                                <input type="text" id="product-id" class="form-control" readonly placeholder="Product ID">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label" for="current-stock">Current Stock</label>
+                                <input type="number" id="current-stock" class="form-control" readonly placeholder="0">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label" for="enter-qty">Enter Quantity</label>
+                            <input type="number" id="enter-qty" class="form-control" min="1" placeholder="Enter quantity" required>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Actions Section -->
+            <section class="actions-section">
+                <button id="in-btn" class="btn btn--primary btn--lg" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 5V19M5 12L12 5L19 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Stock IN
+                </button>
+                <button id="out-btn" class="btn btn--secondary btn--lg" disabled>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 19V5M19 12L12 19L5 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Stock OUT
+                </button>
+            </section>
+
+            <!-- Help Section -->
+            <section class="help-section card">
+                <div class="card__body">
+                    <h3 class="section-title">Quick Help</h3>
+                    <div class="help-grid">
+                        <div class="help-item">
+                            <div class="help-icon">📱</div>
+                            <h4>1. Start Camera</h4>
+                            <p>Click "Start Camera" and allow camera access</p>
+                        </div>
+                        <div class="help-item">
+                            <div class="help-icon">🔍</div>
+                            <h4>2. Scan QR Code</h4>
+                            <p>Point camera at product QR code</p>
+                        </div>
+                        <div class="help-item">
+                            <div class="help-icon">📦</div>
+                            <h4>3. Update Stock</h4>
+                            <p>Enter quantity and choose IN or OUT</p>
+                        </div>
+                        <div class="help-item">
+                            <div class="help-icon">☁️</div>
+                            <h4>4. Auto Sync</h4>
+                            <p>Data syncs to Google Sheets automatically</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- QR Scan Confirmation Modal -->
+    <div id="scan-confirmation-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>QR Code Scanned Successfully</h3>
+                <button class="modal-close" id="scan-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="scan-result">
+                    <div class="scan-icon">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M20 6L9 17L4 12" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <h4 id="scan-product-name">Product Name</h4>
+                    <p id="scan-product-details">
+                        Product ID: <span id="scan-product-id">ID</span> | 
+                        Current Stock: <span id="scan-current-stock">0</span>
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="scan-ok-btn" class="btn btn--primary btn--full-width">Continue with this Product</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Issued To Modal -->
+    <div id="issued-to-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Issue Product to Person</h3>
+                <button class="modal-close" id="issued-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label" for="issued-to-name">Issued To (Person Name) <span style="color: var(--color-error);">*</span></label>
+                    <input type="text" id="issued-to-name" class="form-control" placeholder="Enter person's name" required>
+                    <small class="form-help">This person's name will be recorded in the transaction log</small>
+                </div>
+                <div class="issue-summary">
+                    <h4>Transaction Summary</h4>
+                    <div class="summary-row">
+                        <span>Product:</span>
+                        <strong id="issue-product-name">-</strong>
+                    </div>
+                    <div class="summary-row">
+                        <span>Quantity:</span>
+                        <strong id="issue-quantity">0</strong>
+                    </div>
+                    <div class="summary-row">
+                        <span>Action:</span>
+                        <strong style="color: var(--color-warning);">Stock OUT</strong>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-issue-btn" class="btn btn--outline">Cancel</button>
+                <button id="confirm-issue-btn" class="btn btn--primary">Confirm Issue</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Sync Queue Modal -->
+    <div id="sync-queue-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Pending Sync Items</h3>
+                <button class="modal-close" id="sync-modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p class="sync-help">These transactions are waiting to be synced to Google Sheets:</p>
+                <div id="sync-queue-list" class="sync-queue-list">
+                    <!-- Dynamic content will be added here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="retry-all-btn" class="btn btn--primary">Retry All</button>
+                <button id="clear-queue-btn" class="btn btn--outline">Clear Queue</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
