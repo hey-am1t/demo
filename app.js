@@ -3,7 +3,7 @@
 // ====================================
 
 // 🔧 CONFIGURATION - UPDATE THIS WITH YOUR GOOGLE APPS SCRIPT URL
-const API_URL = "REPLACE_WITH_YOUR_GOOGLE_APPS_SCRIPT_URL";
+const API_URL = "https://script.google.com/macros/s/AKfycbzmPGdNU0E4KtiiimemPJT6ry6etPRIjklzmSiC2eqtMfyOuYY_mCn5bm6g0d5Xo0BlnA/exec";
 
 // Example: const API_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
 
