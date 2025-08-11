@@ -3,7 +3,7 @@
 // ====================================
 
 // 🔧 CONFIGURATION - UPDATE THIS WITH YOUR GOOGLE APPS SCRIPT URL
-const API_URL = "https://script.google.com/macros/s/AKfycbz8FweDuvkS70LPyzLL42pBAvpg72i1bmqMrw00SMchKy6aXoY2v1l5HIXRgOgfcMPIJg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzG724jq7ws7EtsT_RnfsCQTrXK_zdwQwu0RRiOIUi09W74U92NGsE2R2QoW7Ncw0JsEg/exec";
 
 // ====================================
 // Main Application Class
@@ -61,7 +61,7 @@ class QRScannerApp {
     // Configuration Check
     // ====================================
     checkApiConfiguration() {
-        return API_URL && API_URL !== "http://script.google.com/macros/s/AKfycbz8FweDuvkS70LPyzLL42pBAvpg72i1bmqMrw00SMchKy6aXoY2v1l5HIXRgOgfcMPIJg/exec" && API_URL.startsWith('http');
+        return API_URL && API_URL !== "http://script.google.com/macros/s/AKfycbzG724jq7ws7EtsT_RnfsCQTrXK_zdwQwu0RRiOIUi09W74U92NGsE2R2QoW7Ncw0JsEg/exec" && API_URL.startsWith('http');
     }
 
     // ====================================
