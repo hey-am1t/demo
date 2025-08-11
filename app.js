@@ -61,7 +61,7 @@ class QRScannerApp {
     // Configuration Check
     // ====================================
     checkApiConfiguration() {
-        return API_URL && API_URL !== "https://script.google.com/macros/s/AKfycbz8FweDuvkS70LPyzLL42pBAvpg72i1bmqMrw00SMchKy6aXoY2v1l5HIXRgOgfcMPIJg/exec" && API_URL.startsWith('http');
+        return API_URL && API_URL !== "http://script.google.com/macros/s/AKfycbz8FweDuvkS70LPyzLL42pBAvpg72i1bmqMrw00SMchKy6aXoY2v1l5HIXRgOgfcMPIJg/exec" && API_URL.startsWith('http');
     }
 
     // ====================================
