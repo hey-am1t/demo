@@ -3,7 +3,7 @@
 // ====================================
 
 // 🔧 CONFIGURATION - UPDATE THIS WITH YOUR GOOGLE APPS SCRIPT URL
-const API_URL = "https://script.google.com/macros/s/AKfycbzmPGdNU0E4KtiiimemPJT6ry6etPRIjklzmSiC2eqtMfyOuYY_mCn5bm6g0d5Xo0BlnA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxp2w1GusOq2FZ7mTUCZajg5yTVfzVG2gTc-diVgrFRRplGV346ZWF0mWiyJKbSgt_jWA/exec";
 
 // Example: const API_URL = "https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec";
 
