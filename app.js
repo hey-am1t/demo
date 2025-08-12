@@ -3,7 +3,7 @@
 // =============================================
 
 // 🔧 CONFIGURATION - UPDATE WITH YOUR GOOGLE APPS SCRIPT URL
-const API_URL = "https://script.google.com/macros/s/AKfycbwBH0XjC0b25a--m57b_biCl4uUqw7fkagkdBMSrAZ6bhun3YMIGD4mqIYzpgocOdM0sA/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbxrWFFOnV-ETmm3h2uU6tR3R4ZtQGOlCtuglTdlWDJNzWkr7CvOZUSQaua5vlqcAkcyFw/exec";
 
 // Helper functions
 const $ = (sel) => document.querySelector(sel);
