@@ -1,108 +1,183 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>QR Scanner System — Stable Frontend</title>
-  <link rel="stylesheet" href="style.css">
-  <!-- html5-qrcode (scanning) -->
-  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>QR Scanner System - Production Ready</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 </head>
 <body>
-  <div id="app" class="container">
-    <header class="header">
-      <div>
-        <h1>QR Scanner System</h1>
-        <p class="muted">Inventory • Offline Sync • Google Sheets</p>
-      </div>
-      <div class="version">v2.0</div>
-    </header>
+    <!-- Toast Notification Container -->
+    <div id="toast-container" class="toast-container"></div>
+    
+    <!-- Loading Overlay -->
+    <div id="loading-overlay" class="loading-overlay hidden">
+        <div class="loading-spinner"></div>
+        <p>Loading...</p>
+    </div>
 
-    <section class="status-bar">
-      <div class="status-item">
-        <span class="status-dot" id="network-dot"></span>
-        <small id="network-status">Checking...</small>
-      </div>
-      <div class="status-item">
-        <span class="status-dot" id="camera-dot"></span>
-        <small id="camera-status">Camera Inactive</small>
-      </div>
-      <div class="status-item">
-        <span class="status-dot" id="sync-dot"></span>
-        <small id="sync-status">All Synced</small>
-        <button id="retry-sync-btn" class="btn small hidden">Retry</button>
-      </div>
-    </section>
+    <div class="container">
+        <header class="header">
+            <h1>QR Scanner System</h1>
+            <p class="header-subtitle">Production Inventory Management</p>
+            <div class="version-info">
+                <span class="status status--info">v2.0 Production</span>
+            </div>
+        </header>
 
-    <main class="main-grid">
-      <div class="card camera-card">
-        <div id="qr-reader" class="qr-reader">
-          <div class="camera-placeholder">
-            <p>Camera feed will appear here</p>
-          </div>
+        <main class="main-content">
+            <!-- Status Bar -->
+            <section class="status-bar">
+                <div class="status-item">
+                    <div class="status-indicator" id="network-indicator">
+                        <div class="status-dot" id="network-dot"></div>
+                        <span id="network-status">Checking...</span>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <div class="status-indicator" id="camera-indicator">
+                        <div class="status-dot" id="camera-dot"></div>
+                        <span id="camera-status">Inactive</span>
+                    </div>
+                </div>
+                <div class="status-item">
+                    <div class="status-indicator" id="sync-indicator">
+                        <div class="status-dot" id="sync-dot"></div>
+                        <span id="sync-status">All Synced</span>
+                        <button id="retry-sync-btn" class="btn btn--sm btn--outline hidden">Retry</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Camera Section -->
+            <section class="camera-section">
+                <div id="qr-reader" class="camera-container">
+                    <div class="camera-placeholder">
+                        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M23 19C23 19.5304 22.7893 20.0391 22.4142 20.4142C22.0391 20.7893 21.5304 21 21 21H3C2.46957 21 1.96086 20.7893 1.58579 20.4142C1.21071 20.0391 1 19.5304 1 19V8C1 7.46957 1.21071 6.96086 1.58579 6.58579C1.96086 6.21071 2.46957 6 3 6H7L9 3H15L17 6H21C21.5304 6 22.0391 6.21071 22.4142 6.58579C22.7893 6.96086 23 7.46957 23 8V19Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            <circle cx="12" cy="14" r="4" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                        <p>Camera</p>
+                        <button id="start-camera-btn" class="btn btn--primary">Start Camera</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Product Section -->
+            <section class="product-section">
+                <!-- Empty State -->
+                <div id="product-empty-state" class="empty-state">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M9 12L11 14L15 10M21 12C21 16.9706 16.9706 21 12 21C7.02944 21 3 16.9706 3 12C3 7.02944 7.02944 3 12 3C16.9706 3 21 7.02944 21 12Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    <h3>Scan a QR Code to Begin</h3>
+                    <p>Point your camera at a product QR code to get started</p>
+                </div>
+
+                <!-- Product Form -->
+                <div id="product-form" class="product-form" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label" for="product-name">Product Name</label>
+                        <input type="text" id="product-name" class="form-control" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="product-id">Product ID</label>
+                        <input type="text" id="product-id" class="form-control" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="current-stock">Current Stock</label>
+                        <input type="number" id="current-stock" class="form-control" readonly>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" for="enter-qty">Enter Quantity</label>
+                        <input type="number" id="enter-qty" class="form-control" placeholder="Enter quantity" min="1">
+                    </div>
+
+                    <div class="action-buttons">
+                        <button id="in-btn" class="btn btn--success" disabled>
+                            <span class="btn-icon">+</span>
+                            Stock IN
+                        </button>
+                        <button id="out-btn" class="btn btn--danger" disabled>
+                            <span class="btn-icon">-</span>
+                            Stock OUT
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Scan Confirmation Modal -->
+    <div id="scan-confirmation-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Product Scanned</h3>
+                <button id="scan-modal-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="product-preview">
+                    <h4 id="scan-product-name">Product Name</h4>
+                    <p><strong>ID:</strong> <span id="scan-product-id">Product ID</span></p>
+                    <p><strong>Current Stock:</strong> <span id="scan-current-stock">0</span></p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="scan-ok-btn" class="btn btn--primary">OK</button>
+            </div>
         </div>
-        <div class="camera-controls">
-          <select id="camera-select" class="form-control"></select>
-          <button id="start-camera-btn" class="btn">Start</button>
-          <button id="stop-camera-btn" class="btn hidden">Stop</button>
-          <button id="torch-btn" class="btn hidden">Torch</button>
+    </div>
+
+    <!-- Issued To Modal -->
+    <div id="issued-to-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Issue Items</h3>
+                <button id="issued-modal-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="issue-details">
+                    <p><strong>Product:</strong> <span id="issue-product-name">Product Name</span></p>
+                    <p><strong>Quantity:</strong> <span id="issue-quantity">0</span></p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="issued-to-name">Issued To (Person Name)</label>
+                    <input type="text" id="issued-to-name" class="form-control" placeholder="Enter person name" required>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="cancel-issue-btn" class="btn btn--outline">Cancel</button>
+                <button id="confirm-issue-btn" class="btn btn--danger">Confirm Issue</button>
+            </div>
         </div>
-      </div>
+    </div>
 
-      <div class="card product-card">
-        <h3>Product</h3>
-        <div id="product-empty" class="empty">No product loaded — scan a QR code</div>
-        <form id="product-form" class="hidden">
-          <label>Product Name<input id="product-name" readonly class="form-control"/></label>
-          <label>Product ID<input id="product-id" readonly class="form-control"/></label>
-          <label>Current Stock<input id="current-stock" readonly class="form-control"/></label>
-          <label>Quantity<input id="enter-qty" type="number" min="1" class="form-control"/></label>
-          <div class="action-row">
-            <button id="in-btn" class="btn primary" disabled>Stock IN</button>
-            <button id="out-btn" class="btn secondary" disabled>Stock OUT</button>
-          </div>
-        </form>
-      </div>
-
-      <div class="card help-card">
-        <h3>Quick Help</h3>
-        <ol>
-          <li>Set API URL in <code>app.js</code></li>
-          <li>Open page on a device with camera and allow permission</li>
-          <li>Start camera, scan product QR, update quantity</li>
-        </ol>
-      </div>
-
-      <div class="card queue-card">
-        <h3>Sync Queue</h3>
-        <div id="queue-list" class="queue-list">No pending items</div>
-        <div class="queue-actions">
-          <button id="retry-all-btn" class="btn">Retry All</button>
-          <button id="clear-queue-btn" class="btn">Clear</button>
+    <!-- Sync Queue Modal -->
+    <div id="sync-queue-modal" class="modal hidden">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-content--large">
+            <div class="modal-header">
+                <h3>Sync Queue</h3>
+                <button id="sync-modal-close" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="sync-queue-list" class="sync-queue-list">
+                    <!-- Queue items will be populated here -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button id="retry-all-btn" class="btn btn--primary">Retry All</button>
+                <button id="clear-queue-btn" class="btn btn--danger">Clear Queue</button>
+            </div>
         </div>
-      </div>
-    </main>
+    </div>
 
-    <div id="toast" class="toast hidden"></div>
-    <div id="loading" class="loading hidden">Loading…</div>
-  </div>
-
-  <script src="app.js"></script>
-  <script src="style.css"></script>
-  <!-- Scan Confirmation Modal -->
-<div id="scan-confirmation-modal" class="modal hidden">
-  <div class="modal-overlay"></div>
-
-  <div class="modal-box">
-    <button id="scan-modal-close" class="modal-close">&times;</button>
-
-    <h3>Product Scanned</h3>
-    <p><strong id="scan-product-name"></strong></p>
-    <p>ID: <span id="scan-product-id"></span></p>
-    <p>Current Stock: <span id="scan-current-stock"></span></p>
-
-    <button id="scan-ok-btn" class="btn btn--primary">OK</button>
-  </div>
-</div>
+    <script src="app.js"></script>
 </body>
 </html>
