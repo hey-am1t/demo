@@ -88,5 +88,20 @@
   </div>
 
   <script src="app.js"></script>
+  <!-- Scan Confirmation Modal -->
+<div id="scan-confirmation-modal" class="modal hidden">
+  <div class="modal-overlay"></div>
+
+  <div class="modal-box">
+    <button id="scan-modal-close" class="modal-close">&times;</button>
+
+    <h3>Product Scanned</h3>
+    <p><strong id="scan-product-name"></strong></p>
+    <p>ID: <span id="scan-product-id"></span></p>
+    <p>Current Stock: <span id="scan-current-stock"></span></p>
+
+    <button id="scan-ok-btn" class="btn btn--primary">OK</button>
+  </div>
+</div>
 </body>
 </html>
