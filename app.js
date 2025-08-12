@@ -1,989 +1,803 @@
 // =============================================
-// PRODUCTION QR SCANNER - COMPLETE app.js
+// QR SCANNER - FULL FIXED (FEATURE-PRESERVING)
 // =============================================
 
-// 🔧 CONFIGURATION - UPDATE WITH YOUR GOOGLE APPS SCRIPT URL
-const API_URL = "https://script.google.com/macros/s/AKfycbytv2kCQ9Vi0qleslT9fYLOPRdynZjbUCG2z3SQSceRm07IbkJSYO3-gzboy8mz9Q1aJg/exec";
+// --- CONFIG: Replace with your deployed Google Apps Script Web App URL ---
+const API_URL = "https://script.google.com/macros/s/AKfycby4KuculymxfbaLSmn04Em-ANo12HCHYJHlA0GllaVDCK3wxblBe3wePo_cdXU8p4h3/exec";
 
-// Helper functions
-const $ = (sel) => document.querySelector(sel);
-const $$ = (sel) => Array.from(document.querySelectorAll(sel));
+// small helpers
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const safeParseJSON = (txt, fallback = {}) => {
+  try { return JSON.parse(txt); } catch(e) { return fallback; }
+};
 
 class QRScannerApp {
-    constructor() {
-        // Core properties
-        this.html5QrCode = null;
-        this.isScanning = false;
-        this.currentProduct = null;
-        this.scannedQRCode = null;
-        this.isApiConfigured = this.checkApiConfiguration();
-        
-        // App configuration
-        this.config = {
-            offlineSyncInterval: 30000,
-            maxRetryAttempts: 3,
-            toastDuration: 3000,
-            cameraPermissionTimeout: 10000,
-            apiTimeout: 10000
-        };
+  constructor() {
+    // core
+    this.html5QrCode = null;
+    this.isScanning = false;
+    this.currentProduct = null;
+    this.scannedQRCode = null;
+    this.syncQueue = [];
+    this.isOnline = navigator.onLine;
+    this.retryLimit = 3;
 
-        // Status messages
-        this.statusMessages = {
-            networkOnline: "Connected",
-            networkOffline: "Offline", 
-            cameraActive: "Camera Active",
-            cameraInactive: "Camera Inactive",
-            syncComplete: "All Synced",
-            syncPending: "Sync Pending",
-            syncFailed: "Sync Failed",
-            apiNotConfigured: "API Not Configured"
-        };
+    // config
+    this.config = {
+      offlineSyncInterval: 25000,
+      apiTimeout: 12000,
+      toastDuration: 3500,
+      cameraConfig: { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 }
+    };
 
-        // Error messages
-        this.errorMessages = {
-            apiNotConfigured: "Please configure your Google Apps Script URL in app.js",
-            noProducts: "No products found. Please add products to your Google Sheets",
-            cameraError: "Unable to access camera. Please check permissions",
-            networkError: "Network error. Operating in offline mode"
-        };
+    // UI elements
+    this.initElements();
 
-        // Offline sync queue
-        this.syncQueue = [];
-        this.isOnline = navigator.onLine;
-        this.retryCount = {};
+    // restore queue
+    this.loadQueueFromStorage();
 
-        // Initialize app
-        this.initializeElements();
-        this.bindEvents();
-        this.initializeApp();
-    }
+    // bind events
+    this.bindEvents();
 
-    // ====================================
-    // Configuration Check
-    // ====================================
-    checkApiConfiguration() {
-        return API_URL && 
-               API_URL.startsWith('http') && 
-               !API_URL.includes('YOUR_SCRIPT_ID') && 
-               !API_URL.includes('REPLACE_WITH');
-    }
+    // initialize UI & status
+    this.initializeApp();
+  }
 
-    // ====================================
-    // Element Initialization
-    // ====================================
-    initializeElements() {
-        // Camera elements
-        this.startCameraBtn = $('#start-camera-btn');
-        this.cameraContainer = $('#qr-reader');
-        
-        // Product form elements
-        this.productNameEl = $('#product-name');
-        this.productIdEl = $('#product-id');
-        this.currentStockEl = $('#current-stock');
-        this.enterQtyEl = $('#enter-qty');
-        
-        // Action buttons
-        this.inBtn = $('#in-btn');
-        this.outBtn = $('#out-btn');
+  // -----------------------
+  // init DOM refs
+  // -----------------------
+  initElements() {
+    // camera
+    this.startCameraBtn = $('#start-camera-btn');
+    this.cameraContainer = $('#qr-reader');
 
-        // Status bar elements
-        this.networkDot = $('#network-dot');
-        this.networkStatus = $('#network-status');
-        this.cameraDot = $('#camera-dot');
-        this.cameraStatus = $('#camera-status');
-        this.syncDot = $('#sync-dot');
-        this.syncStatus = $('#sync-status');
-        this.retrySyncBtn = $('#retry-sync-btn');
+    // product form elements
+    this.productNameEl = $('#product-name');
+    this.productIdEl = $('#product-id');
+    this.currentStockEl = $('#current-stock');
+    this.enterQtyEl = $('#enter-qty');
 
-        // Modal elements
-        this.scanConfirmationModal = $('#scan-confirmation-modal');
-        this.issuedToModal = $('#issued-to-modal');
-        this.syncQueueModal = $('#sync-queue-modal');
-        
-        // Toast container
-        this.toastContainer = $('#toast-container') || this.createToastContainer();
-        
-        // Loading overlay
-        this.loadingOverlay = $('#loading-overlay');
+    // actions
+    this.inBtn = $('#in-btn');
+    this.outBtn = $('#out-btn');
 
-        // Product form and empty state
-        this.productForm = $('#product-form');
-        this.productEmptyState = $('#product-empty-state');
-    }
+    // status
+    this.networkDot = $('#network-dot');
+    this.networkStatus = $('#network-status');
+    this.cameraDot = $('#camera-dot');
+    this.cameraStatus = $('#camera-status');
+    this.syncDot = $('#sync-dot');
+    this.syncStatus = $('#sync-status');
+    this.retrySyncBtn = $('#retry-sync-btn');
 
-    createToastContainer() {
-        const container = document.createElement('div');
-        container.id = 'toast-container';
-        container.className = 'toast-container';
-        document.body.appendChild(container);
-        return container;
-    }
+    // modals
+    this.scanModal = $('#scan-confirmation-modal');
+    this.scanModalClose = $('#scan-modal-close');
+    this.scanOkBtn = $('#scan-ok-btn');
 
-    // ====================================
-    // Event Binding
-    // ====================================
-    bindEvents() {
-        // Camera events
-        this.startCameraBtn?.addEventListener('click', () => this.startCamera());
-        
-        // Form events
-        this.enterQtyEl?.addEventListener('input', () => this.updateButtonStates());
-        this.enterQtyEl?.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter' && !this.inBtn?.disabled) {
-                this.handleInventoryTransaction('IN');
-            }
-        });
+    this.issuedModal = $('#issued-to-modal');
+    this.issuedModalClose = $('#issued-modal-close');
+    this.cancelIssueBtn = $('#cancel-issue-btn');
+    this.confirmIssueBtn = $('#confirm-issue-btn');
+    this.issuedToInput = $('#issued-to-name');
+    this.issueProductName = $('#issue-product-name');
+    this.issueQuantityEl = $('#issue-quantity');
 
-        // Action button events
-        this.inBtn?.addEventListener('click', () => this.handleInventoryTransaction('IN'));
-        this.outBtn?.addEventListener('click', () => this.handleInventoryTransaction('OUT'));
+    this.syncQueueModal = $('#sync-queue-modal');
+    this.syncModalClose = $('#sync-modal-close');
+    this.syncQueueList = $('#sync-queue-list');
+    this.retryAllBtn = $('#retry-all-btn');
+    this.clearQueueBtn = $('#clear-queue-btn');
 
-        // Modal events
-        this.bindModalEvents();
+    // other UI
+    this.toastContainer = $('#toast-container') || this.createToastContainer();
+    this.loadingOverlay = $('#loading-overlay');
+    this.productForm = $('#product-form');
+    this.productEmptyState = $('#product-empty-state');
+  }
 
-        // Network events
-        window.addEventListener('online', () => this.handleNetworkChange(true));
-        window.addEventListener('offline', () => this.handleNetworkChange(false));
+  // -----------------------
+  // EVENTS
+  // -----------------------
+  bindEvents() {
+    // camera
+    this.startCameraBtn?.addEventListener('click', () => this.startCamera());
 
-        // Status bar events
-        this.retrySyncBtn?.addEventListener('click', () => this.retryAllSync());
-        this.syncStatus?.addEventListener('click', () => {
-            if (this.syncQueue.length > 0) {
-                this.showSyncQueueModal();
-            }
-        });
+    // quantity input
+    this.enterQtyEl?.addEventListener('input', () => this.updateButtonStates());
+    this.enterQtyEl?.addEventListener('keypress', (e) => {
+      if (e.key === 'Enter' && !this.inBtn.disabled) this.handleInventoryTransaction('IN');
+    });
 
-        // App lifecycle events
-        document.addEventListener('visibilitychange', () => this.handleVisibilityChange());
-        window.addEventListener('beforeunload', () => this.cleanup());
-    }
+    // in/out
+    this.inBtn?.addEventListener('click', () => this.handleInventoryTransaction('IN'));
+    this.outBtn?.addEventListener('click', () => this.handleInventoryTransaction('OUT'));
 
-    bindModalEvents() {
-        // Scan confirmation modal
-        $('#scan-modal-close')?.addEventListener('click', () => this.hideScanConfirmationModal());
-        $('#scan-ok-btn')?.addEventListener('click', () => this.confirmScan());
-        
-        // Issued to modal
-        $('#issued-modal-close')?.addEventListener('click', () => this.hideIssuedToModal());
-        $('#cancel-issue-btn')?.addEventListener('click', () => this.hideIssuedToModal());
-        $('#confirm-issue-btn')?.addEventListener('click', () => this.confirmIssue());
-        
-        // Sync queue modal
-        $('#sync-modal-close')?.addEventListener('click', () => this.hideSyncQueueModal());
-        $('#retry-all-btn')?.addEventListener('click', () => this.retryAllSync());
-        $('#clear-queue-btn')?.addEventListener('click', () => this.clearSyncQueue());
+    // modal controls
+    this.scanModalClose?.addEventListener('click', () => this.hideScanConfirmationModal());
+    this.scanOkBtn?.addEventListener('click', () => this.confirmScan());
 
-        // Modal overlay clicks
-        $$('.modal-overlay').forEach(overlay => {
-            overlay.addEventListener('click', (e) => {
-                if (e.target === overlay) {
-                    const modal = overlay.closest('.modal');
-                    if (modal) {
-                        this.hideModal(modal);
-                    }
-                }
-            });
-        });
-    }
+    this.issuedModalClose?.addEventListener('click', () => this.hideIssuedToModal());
+    this.cancelIssueBtn?.addEventListener('click', () => this.hideIssuedToModal());
+    this.confirmIssueBtn?.addEventListener('click', () => this.confirmIssue());
 
-    // ====================================
-    // Application Initialization
-    // ====================================
-    initializeApp() {
-        console.log('🚀 Starting QR Scanner System...');
-        
-        // Initialize status indicators
-        this.updateNetworkStatus();
-        this.updateCameraStatus('inactive');
-        this.updateSyncStatus();
-        
-        // Initialize button states
-        this.initializeButtonStates();
-        
-        // Show empty product state
-        this.showProductEmptyState();
-        
-        // Check API configuration
-        if (!this.isApiConfigured) {
-            setTimeout(() => this.showApiConfigurationWarning(), 100);
-        } else {
-            setTimeout(() => this.testApiConnection(), 200);
+    this.syncModalClose?.addEventListener('click', () => this.hideSyncQueueModal());
+    this.retryAllBtn?.addEventListener('click', () => this.retryAllSync());
+    this.clearQueueBtn?.addEventListener('click', () => this.clearSyncQueue());
+
+    // clicking sync status opens queue modal
+    this.syncStatus?.addEventListener('click', () => {
+      if (this.syncQueue.length > 0) this.showSyncQueueModal();
+    });
+
+    // network
+    window.addEventListener('online', () => this.handleNetworkChange(true));
+    window.addEventListener('offline', () => this.handleNetworkChange(false));
+
+    // visibility - pause camera when tab hidden
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        this.pauseCamera();
+      } else {
+        this.resumeCamera();
+      }
+    });
+
+    // global click for modal overlay closing (already in HTML - ensure behavior)
+    $$('.modal-overlay').forEach(overlay => {
+      overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) {
+          const modal = overlay.closest('.modal');
+          if (modal) modal.classList.add('hidden');
+          document.body.style.overflow = '';
         }
-        
-        // Start sync interval
-        this.startSyncInterval();
-        
-        // Show success message
-        setTimeout(() => {
-            const message = this.isApiConfigured 
-                ? 'System ready! Scan a QR code to begin.'
-                : 'System loaded. Please configure API URL in app.js to begin.';
-            const type = this.isApiConfigured ? 'success' : 'warning';
-            this.showToast(message, type);
-        }, 500);
+      });
+    });
+
+    // expose functions for inline onclick from rendered HTML (queue items)
+    window.qrApp = this;
+  }
+
+  initializeApp() {
+    this.updateNetworkStatus();
+    this.updateCameraStatus('inactive');
+    this.updateSyncStatus();
+    this.initializeButtonStates();
+    this.showProductEmptyState();
+    this.startSyncInterval();
+
+    // quick API test if configured
+    if (this.isApiConfigured()) {
+      this.testApiConnection();
+    } else {
+      this.showToast('API not configured. Set API_URL in app.js', 'warning');
+    }
+  }
+
+  // -----------------------
+  // API CONFIG CHECK
+  // -----------------------
+  isApiConfigured() {
+    return typeof API_URL === 'string' && API_URL.startsWith('http') && !API_URL.includes('YOUR_SCRIPT_ID');
+  }
+
+  // -----------------------
+  // CAMERA: start -> scan -> pause/resume/stop
+  // -----------------------
+  async startCamera() {
+    if (!this.isApiConfigured()) {
+      this.showToast('Please configure API_URL in app.js first', 'warning');
+      return;
     }
 
-    // ====================================
-    // Product State Management
-    // ====================================
-    showProductEmptyState() {
-        if (this.productForm) {
-            this.productForm.style.display = 'none';
-        }
-        if (this.productEmptyState) {
-            this.productEmptyState.style.display = 'flex';
-        }
-    }
+    try {
+      this.showLoading('Starting camera...');
+      if (this.startCameraBtn) this.startCameraBtn.style.display = 'none';
 
-    showProductForm() {
-        if (this.productEmptyState) {
-            this.productEmptyState.style.display = 'none';
-        }
-        if (this.productForm) {
-            this.productForm.style.display = 'flex';
-        }
-    }
+      // instantiate Html5Qrcode
+      if (!this.html5QrCode) this.html5QrCode = new Html5Qrcode("qr-reader");
 
-    // ====================================
-    // API Configuration Warning
-    // ====================================
-    showApiConfigurationWarning() {
-        console.warn('⚠️ API URL not configured. Please update the API_URL constant in app.js');
-        this.showToast('Configure API_URL in app.js to begin', 'warning');
-    }
+      // Try environment (back) first, then user (front)
+      const tryStart = async (constraints) => {
+        return this.html5QrCode.start(
+          constraints,
+          this.config.cameraConfig,
+          (decodedText, decodedResult) => this.onScanSuccess(decodedText, decodedResult),
+          (error) => { /* ignore frequent scan errors */ }
+        );
+      };
 
-    // ====================================
-    // API Connection Test
-    // ====================================
-    async testApiConnection() {
+      try {
+        await tryStart({ facingMode: { exact: "environment" } });
+      } catch (err) {
+        // fallback - try generic environment, then user
         try {
-            console.log('🔗 Testing API connection...');
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), this.config.apiTimeout);
-            
-            const response = await fetch(API_URL + '?action=test', {
-                method: 'GET',
-                signal: controller.signal
-            });
-            
-            clearTimeout(timeoutId);
-            
-            if (response.ok) {
-                console.log('✅ API connection successful');
-                this.showToast('Connected to Google Sheets API', 'success');
-            } else {
-                console.warn('⚠️ API responded with error:', response.status);
-                this.showToast('API connection issue. Check your Google Apps Script.', 'warning');
-            }
-        } catch (error) {
-            console.error('❌ API connection failed:', error);
-            if (error.name !== 'AbortError') {
-                this.showToast('Could not connect to Google Sheets. Check your API URL.', 'error');
-            }
+          await tryStart({ facingMode: "environment" });
+        } catch (err2) {
+          await tryStart({ facingMode: "user" });
         }
+      }
+
+      this.isScanning = true;
+      this.updateCameraStatus('active');
+      this.hideLoading();
+      this.showToast('Camera started', 'success');
+
+    } catch (err) {
+      console.error('startCamera error', err);
+      this.updateCameraStatus('inactive');
+      if (this.startCameraBtn) this.startCameraBtn.style.display = 'block';
+      this.hideLoading();
+      this.showToast('Unable to start camera — check permissions', 'error');
+    }
+  }
+
+  async onScanSuccess(decodedText /*, decodedResult*/) {
+    console.log('QR scanned:', decodedText);
+    this.scannedQRCode = decodedText;
+
+    // pause scanning while processing
+    if (this.html5QrCode && this.isScanning) {
+      try { await this.html5QrCode.pause(true); } catch (e) { /* ignore */ }
     }
 
-    // ====================================
-    // Status Management
-    // ====================================
-    updateNetworkStatus() {
-        const isOnline = navigator.onLine;
-        this.isOnline = isOnline;
-        
-        if (this.networkDot) {
-            this.networkDot.className = `status-dot ${isOnline ? 'online' : 'offline'}`;
-        }
-        if (this.networkStatus) {
-            this.networkStatus.textContent = isOnline ? this.statusMessages.networkOnline : this.statusMessages.networkOffline;
-        }
-        
-        if (isOnline && this.syncQueue.length > 0) {
-            setTimeout(() => this.processSyncQueue(), 1000);
-        }
+    this.showLoading('Fetching product...');
+
+    try {
+      const product = await this.fetchProductFromGoogleSheets(decodedText);
+      this.hideLoading();
+
+      if (product) {
+        // show confirmation modal
+        this.showScanConfirmationModal(product);
+        // flash UI
+        this.cameraContainer?.classList?.add('scan-success');
+        setTimeout(() => this.cameraContainer?.classList?.remove('scan-success'), 650);
+      } else {
+        this.showToast('Product not found in inventory', 'warning');
+        await this.resumeCamera();
+      }
+    } catch (err) {
+      console.error('fetch product failed', err);
+      this.hideLoading();
+      this.showToast('Error fetching product. Check API or network.', 'error');
+      await this.resumeCamera();
+    }
+  }
+
+  async resumeCamera() {
+    if (this.html5QrCode && this.isScanning) {
+      try { await this.html5QrCode.resume(); } catch(e) { /* ignore */ }
+    }
+  }
+
+  async pauseCamera() {
+    if (this.html5QrCode && this.isScanning) {
+      try { await this.html5QrCode.pause(true); } catch(e) { /* ignore */ }
+    }
+  }
+
+  async stopCamera() {
+    if (this.html5QrCode) {
+      try {
+        await this.html5QrCode.stop();
+        this.html5QrCode.clear();
+      } catch (e) { /* ignore */ }
+    }
+    this.isScanning = false;
+    this.updateCameraStatus('inactive');
+    if (this.startCameraBtn) this.startCameraBtn.style.display = 'block';
+  }
+
+  // -----------------------
+  // MODAL UI helpers
+  // -----------------------
+  showModal(modalEl) {
+    if (!modalEl) return;
+    modalEl.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+  hideModal(modalEl) {
+    if (!modalEl) return;
+    modalEl.classList.add('hidden');
+    document.body.style.overflow = '';
+  }
+
+  showScanConfirmationModal(product) {
+    // fill elements
+    $('#scan-product-name').textContent = product.Product_Name || product.name || 'Unknown';
+    $('#scan-product-id').textContent = product.Product_ID || product.id || '';
+    $('#scan-current-stock').textContent = (product.Current_Stock != null) ? product.Current_Stock : 0;
+    this.currentProduct = product;
+    this.showModal(this.scanModal);
+  }
+  hideScanConfirmationModal() {
+    this.hideModal(this.scanModal);
+    // resume scanning after close
+    this.resumeCamera();
+  }
+  confirmScan() {
+    // user clicked OK -> populate form and close modal
+    this.hideModal(this.scanModal);
+    this.populateProductInfo(this.currentProduct);
+    this.showToast(`Product loaded: ${this.currentProduct.Product_Name || this.currentProduct.name}`, 'success');
+    // no immediate resume — user chooses camera use
+  }
+
+  showIssuedToModal(product, quantity) {
+    if (!product) return;
+    this.issueProductName.textContent = product.Product_Name || product.name || '';
+    this.issueQuantityEl.textContent = quantity;
+    this.issuedToInput.value = '';
+    this.showModal(this.issuedModal);
+    setTimeout(() => this.issuedToInput?.focus(), 200);
+  }
+  hideIssuedToModal() {
+    this.hideModal(this.issuedModal);
+    // keep scanning paused until user confirms/cancels
+  }
+  confirmIssue() {
+    const person = (this.issuedToInput?.value || '').trim();
+    if (!person) {
+      this.showToast('Please enter recipient name', 'warning');
+      return;
+    }
+    this.hideIssuedToModal();
+    this.processStockOut(person);
+  }
+
+  showSyncQueueModal() {
+    this.renderSyncQueueList();
+    this.showModal(this.syncQueueModal);
+  }
+  hideSyncQueueModal() {
+    this.hideModal(this.syncQueueModal);
+  }
+
+  // -----------------------
+  // API CALLS (GET/POST)
+  // - tolerant for both application/json and text/plain
+  // -----------------------
+  async testApiConnection() {
+    if (!this.isApiConfigured()) return;
+    try {
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), this.config.apiTimeout);
+      const res = await fetch(`${API_URL}?action=test`, { method: 'GET', signal: controller.signal });
+      clearTimeout(id);
+      if (res.ok) {
+        const j = await res.json();
+        if (j && j.success) this.showToast('Connected to API', 'success');
+        else this.showToast('API responded, but unexpected payload', 'warning');
+      } else {
+        this.showToast('API responded with error', 'warning');
+      }
+    } catch (err) {
+      console.warn('API test failed', err);
+      this.showToast('Cannot reach API — working offline', 'warning');
+    }
+  }
+
+  async fetchProductFromGoogleSheets(productId) {
+    if (!this.isApiConfigured()) throw new Error('API not configured');
+    const url = `${API_URL}?action=getProduct&productId=${encodeURIComponent(productId)}`;
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), this.config.apiTimeout);
+    const res = await fetch(url, { method: 'GET', signal: controller.signal });
+    clearTimeout(id);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    if (!payload.success) return null;
+    // flexible mapping: ensure both uppercase and lowercase expected fields
+    const d = payload.data || {};
+    return {
+      Product_ID: d.Product_ID || d.productId || d.id || d.ProductId || '',
+      Product_Name: d.Product_Name || d.productName || d.name || '',
+      Current_Stock: typeof d.Current_Stock !== 'undefined' ? Number(d.Current_Stock) :
+                     typeof d.currentStock !== 'undefined' ? Number(d.currentStock) :
+                     (Number(d.stock) || 0),
+      // keep fallbacks for original code that may read lowercase props
+      id: d.id || d.productId || d.Product_ID || '',
+      name: d.name || d.productName || d.Product_Name || '',
+      currentStock: typeof d.currentStock !== 'undefined' ? Number(d.currentStock) : (Number(d.Current_Stock) || 0)
+    };
+  }
+
+  // Send transaction to server. Use 'text/plain' content-type to avoid preflight (Apps Script friendly),
+  // but also accept application/json. If you prefer strict JSON and have CORS configured, you can change.
+  async syncToGoogleSheets(transactionData) {
+    if (!this.isApiConfigured()) throw new Error('API not configured');
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), this.config.apiTimeout);
+
+    // We'll send as text/plain to avoid CORS preflight on Apps Script deployments.
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ action: 'addTransaction', payload: transactionData }),
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message || 'Sync failed');
+    return json;
+  }
+
+  // -----------------------
+  // INVENTORY TRANSACTION FLOW
+  // -----------------------
+  handleInventoryTransaction(type) {
+    const rawQty = (this.enterQtyEl?.value || '').toString().trim();
+    const qty = parseInt(rawQty, 10);
+    if (isNaN(qty) || qty <= 0) {
+      this.showToast('Please enter a valid quantity', 'warning');
+      return;
+    }
+    if (!this.currentProduct) {
+      this.showToast('Scan a product first', 'warning');
+      return;
+    }
+    const currentStock = Number(this.currentProduct.Current_Stock || this.currentProduct.currentStock || 0);
+    if (type === 'OUT' && qty > currentStock) {
+      this.showToast('Insufficient stock', 'error');
+      return;
     }
 
-    updateCameraStatus(status) {
-        const statusClass = status === 'active' ? 'online' : 'offline';
-        if (this.cameraDot) {
-            this.cameraDot.className = `status-dot ${statusClass}`;
-        }
-        if (this.cameraStatus) {
-            this.cameraStatus.textContent = status === 'active' ? 
-                this.statusMessages.cameraActive : 
-                this.statusMessages.cameraInactive;
-        }
+    if (type === 'OUT') {
+      // ask for issued-to
+      this.showIssuedToModal(this.currentProduct, qty);
+      return;
     }
 
-    updateSyncStatus() {
-        const pendingCount = this.syncQueue.length;
-        const failedItems = this.syncQueue.filter(item => item.status === 'failed');
-        
-        if (pendingCount === 0) {
-            if (this.syncDot) this.syncDot.className = 'status-dot online';
-            if (this.syncStatus) this.syncStatus.textContent = this.statusMessages.syncComplete;
-            if (this.retrySyncBtn) this.retrySyncBtn.classList.add('hidden');
-        } else if (failedItems.length > 0) {
-            if (this.syncDot) this.syncDot.className = 'status-dot offline';
-            if (this.syncStatus) this.syncStatus.textContent = `${failedItems.length} Failed`;
-            if (this.retrySyncBtn) this.retrySyncBtn.classList.remove('hidden');
-        } else {
-            if (this.syncDot) this.syncDot.className = 'status-dot warning pulsing';
-            if (this.syncStatus) this.syncStatus.textContent = `${pendingCount} Pending`;
-            if (this.retrySyncBtn) this.retrySyncBtn.classList.add('hidden');
-        }
+    // IN flow
+    const tx = {
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+      productId: this.currentProduct.Product_ID || this.currentProduct.id,
+      productName: this.currentProduct.Product_Name || this.currentProduct.name,
+      type,
+      quantity: qty,
+      oldStock: currentStock,
+      newStock: currentStock + qty,
+      user: 'QR Scanner User'
+    };
+    this.processStockIn(tx);
+  }
+
+  async processStockIn(transactionData) {
+    this.showLoading('Processing stock IN...');
+    try {
+      if (this.isOnline) {
+        await this.syncToGoogleSheets(transactionData);
+        this.updateProductStock(transactionData);
+        this.showToast(`Added ${transactionData.quantity} to inventory`, 'success');
+      } else {
+        this.addToSyncQueue(transactionData);
+        this.updateProductStock(transactionData);
+        this.showToast(`Added ${transactionData.quantity} (queued for sync)`, 'warning');
+      }
+    } catch (err) {
+      console.error('processStockIn error', err);
+      this.addToSyncQueue(transactionData);
+      this.updateProductStock(transactionData);
+      this.showToast('Sync failed, item queued', 'warning');
+    } finally {
+      this.hideLoading();
+      this.clearForm();
+    }
+  }
+
+  async processStockOut(issuedTo) {
+    const qty = parseInt(this.enterQtyEl?.value || 0, 10);
+    const currentStock = Number(this.currentProduct.Current_Stock || this.currentProduct.currentStock || 0);
+
+    const tx = {
+      id: Date.now(),
+      timestamp: new Date().toISOString(),
+      productId: this.currentProduct.Product_ID || this.currentProduct.id,
+      productName: this.currentProduct.Product_Name || this.currentProduct.name,
+      type: 'OUT',
+      quantity: qty,
+      oldStock: currentStock,
+      newStock: currentStock - qty,
+      issuedTo,
+      user: 'QR Scanner User'
+    };
+
+    this.showLoading('Processing stock OUT...');
+    try {
+      if (this.isOnline) {
+        await this.syncToGoogleSheets(tx);
+        this.updateProductStock(tx);
+        this.showToast(`Issued ${qty} to ${issuedTo}`, 'success');
+      } else {
+        this.addToSyncQueue(tx);
+        this.updateProductStock(tx);
+        this.showToast(`Issued ${qty} (queued for sync)`, 'warning');
+      }
+    } catch (err) {
+      console.error('processStockOut error', err);
+      this.addToSyncQueue(tx);
+      this.updateProductStock(tx);
+      this.showToast('Sync failed, item queued', 'warning');
+    } finally {
+      this.hideLoading();
+      this.clearForm();
+    }
+  }
+
+  // -----------------------
+  // PRODUCT FORM UI helpers
+  // -----------------------
+  populateProductInfo(product) {
+    this.currentProduct = product;
+    if (this.productNameEl) this.productNameEl.value = product.Product_Name || product.name || '';
+    if (this.productIdEl) this.productIdEl.value = product.Product_ID || product.id || '';
+    if (this.currentStockEl) this.currentStockEl.value = product.Current_Stock != null ? product.Current_Stock : (product.currentStock || 0);
+    if (this.enterQtyEl) this.enterQtyEl.value = '';
+    this.updateButtonStates();
+    this.showProductForm();
+    setTimeout(() => this.enterQtyEl?.focus(), 120);
+  }
+
+  updateProductStock(transaction) {
+    if (!this.currentProduct) return;
+    this.currentProduct.Current_Stock = transaction.newStock;
+    this.currentProduct.currentStock = transaction.newStock;
+    if (this.currentStockEl) this.currentStockEl.value = transaction.newStock;
+    this.updateSyncStatus(); // maybe reflect pending
+  }
+
+  clearForm() {
+    if (this.enterQtyEl) this.enterQtyEl.value = '';
+    this.updateButtonStates();
+    this.enterQtyEl?.focus();
+  }
+
+  updateButtonStates() {
+    const qty = parseInt(this.enterQtyEl?.value || 0, 10);
+    const ok = !isNaN(qty) && qty > 0;
+    if (this.inBtn) this.inBtn.disabled = !ok;
+    if (this.outBtn) this.outBtn.disabled = !ok;
+  }
+
+  initializeButtonStates() {
+    if (this.inBtn) this.inBtn.disabled = true;
+    if (this.outBtn) this.outBtn.disabled = true;
+  }
+
+  showProductForm() {
+    if (this.productEmptyState) this.productEmptyState.style.display = 'none';
+    if (this.productForm) this.productForm.style.display = 'flex';
+  }
+  showProductEmptyState() {
+    if (this.productForm) this.productForm.style.display = 'none';
+    if (this.productEmptyState) this.productEmptyState.style.display = 'flex';
+  }
+
+  // -----------------------
+  // SYNC QUEUE (localStorage persistence)
+  // -----------------------
+  saveQueueToStorage() {
+    try {
+      localStorage.setItem('qr_sync_queue_v1', JSON.stringify(this.syncQueue));
+    } catch (e) {
+      console.warn('Failed to save queue', e);
+    }
+  }
+
+  loadQueueFromStorage() {
+    try {
+      const raw = localStorage.getItem('qr_sync_queue_v1');
+      this.syncQueue = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(this.syncQueue)) this.syncQueue = [];
+    } catch (e) {
+      this.syncQueue = [];
+    }
+  }
+
+  addToSyncQueue(item) {
+    item.status = item.status || 'pending';
+    item.retryCount = item.retryCount || 0;
+    this.syncQueue.push(item);
+    this.saveQueueToStorage();
+    this.updateSyncStatus();
+  }
+
+  removeSyncItem(index) {
+    if (index >= 0 && index < this.syncQueue.length) {
+      this.syncQueue.splice(index, 1);
+      this.saveQueueToStorage();
+      this.updateSyncStatus();
+      this.renderSyncQueueList();
+    }
+  }
+
+  retrySyncItem(index) {
+    const item = this.syncQueue[index];
+    if (!item) return;
+    // attempt immediate sync for this item
+    item.retryCount = (item.retryCount || 0) + 1;
+    this.saveQueueToStorage();
+    this.processSingleQueueItem(item, index);
+  }
+
+  clearSyncQueue() {
+    this.syncQueue = [];
+    this.saveQueueToStorage();
+    this.updateSyncStatus();
+    this.renderSyncQueueList();
+    this.showToast('Sync queue cleared', 'info');
+  }
+
+  renderSyncQueueList() {
+    if (!this.syncQueueList) return;
+    if (this.syncQueue.length === 0) {
+      this.syncQueueList.innerHTML = '<p style="text-align:center;color:#666;padding:18px">No pending items</p>';
+      return;
     }
 
-    // ====================================
-    // Camera Management
-    // ====================================
-    async startCamera() {
-        if (!this.isApiConfigured) {
-            this.showToast('Please configure your Google Apps Script URL first', 'warning');
-            return;
-        }
+    this.syncQueueList.innerHTML = this.syncQueue.map((item, i) => {
+      const issuedToHtml = item.issuedTo ? `<p>Issued to: ${this.escapeHtml(item.issuedTo)}</p>` : '';
+      const status = item.status || 'pending';
+      const time = item.timestamp ? new Date(item.timestamp).toLocaleString() : new Date(item.id ? Number(item.id) : Date.now()).toLocaleString();
+      return `
+        <div class="sync-queue-item" style="border-bottom:1px solid #eee;padding:12px 8px;display:flex;justify-content:space-between;gap:12px">
+          <div style="flex:1">
+            <h5 style="margin:0 0 6px 0">${this.escapeHtml((item.type||'').toUpperCase())}: ${this.escapeHtml(item.productName || item.product || '')}</h5>
+            <p style="margin:0 0 4px 0">Qty: ${this.escapeHtml(String(item.quantity || '0'))} | ${this.escapeHtml(time)}</p>
+            ${issuedToHtml}
+            <p style="margin:6px 0 0 0;color:#666">Status: ${this.escapeHtml(status)} (${item.retryCount || 0} retries)</p>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+            <button class="btn btn--sm btn--outline" onclick="qrApp.retrySyncItem(${i})">Retry</button>
+            <button class="btn btn--sm btn--secondary" onclick="qrApp.removeSyncItem(${i})">Delete</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
 
-        try {
-            this.showLoading('Starting camera...');
-            if (this.startCameraBtn) this.startCameraBtn.style.display = 'none';
-            
-            this.html5QrCode = new Html5Qrcode("qr-reader");
-            
-            const config = {
-                fps: 10,
-                qrbox: { width: 220, height: 220 },
-                aspectRatio: 1.0,
-                disableFlip: false
-            };
+  escapeHtml(str) {
+    if (!str) return '';
+    return (''+str).replace(/[&<>"']/g, function(m){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]; });
+  }
 
-            await this.html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                (decodedText, decodedResult) => {
-                    this.onScanSuccess(decodedText, decodedResult);
-                },
-                (errorMessage) => {
-                    // Ignore frequent scan errors
-                }
-            );
-
-            this.isScanning = true;
-            this.updateCameraStatus('active');
-            this.hideLoading();
-            this.showToast('Camera started successfully', 'success');
-            
-        } catch (error) {
-            console.error('❌ Error starting camera:', error);
-            this.updateCameraStatus('inactive');
-            if (this.startCameraBtn) this.startCameraBtn.style.display = 'block';
-            this.hideLoading();
-            this.showToast(this.errorMessages.cameraError, 'error');
-        }
+  // process single queued item (used by retry)
+  async processSingleQueueItem(item, index) {
+    try {
+      await this.syncToGoogleSheets(item);
+      // remove the item at index (if it still exists)
+      const idx = this.syncQueue.indexOf(item);
+      if (idx !== -1) {
+        this.syncQueue.splice(idx, 1);
+        this.saveQueueToStorage();
+      }
+      this.updateSyncStatus();
+      this.renderSyncQueueList();
+      this.showToast('Queued item synced', 'success');
+    } catch (err) {
+      console.error('processSingleQueueItem error', err);
+      item.status = 'failed';
+      item.retryCount = (item.retryCount || 0) + 1;
+      this.saveQueueToStorage();
+      this.updateSyncStatus();
+      this.renderSyncQueueList();
+      this.showToast('Failed to sync queued item', 'warning');
     }
+  }
 
-    async onScanSuccess(decodedText, decodedResult) {
-        console.log('📱 QR Code detected:', decodedText);
-        
-        // Temporarily stop scanning
-        if (this.html5QrCode && this.isScanning) {
-            await this.html5QrCode.pause(true);
-        }
-        
-        this.scannedQRCode = decodedText;
-        
-        // Show loading while fetching product data
-        this.showLoading('Fetching product data...');
-        
-        try {
-            const product = await this.fetchProductFromGoogleSheets(decodedText);
-            this.hideLoading();
-            
-            if (product) {
-                this.showScanConfirmationModal(product);
-                
-                // Add visual feedback
-                if (this.cameraContainer) {
-                    this.cameraContainer.classList.add('scan-success');
-                    setTimeout(() => {
-                        this.cameraContainer.classList.remove('scan-success');
-                    }, 600);
-                }
-            } else {
-                this.showToast('Product not found in inventory', 'warning');
-                this.resumeScanning();
-            }
-        } catch (error) {
-            console.error('❌ Error fetching product:', error);
-            this.hideLoading();
-            this.showToast('Error fetching product data. Check connection and API configuration.', 'error');
-            this.resumeScanning();
-        }
+  // automatic processing of queue
+  async processSyncQueue() {
+    if (!this.isOnline || this.syncQueue.length === 0 || !this.isApiConfigured()) return;
+    // iterate copy to avoid mutation issues
+    for (let i = 0; i < this.syncQueue.length; ) {
+      const item = this.syncQueue[i];
+      try {
+        await this.syncToGoogleSheets(item);
+        // if success, remove at i
+        this.syncQueue.splice(i, 1);
+        this.saveQueueToStorage();
+        this.showToast('Queued item synced', 'success');
+      } catch (err) {
+        console.error('Queued item sync error', err);
+        item.status = 'failed';
+        item.retryCount = (item.retryCount || 0) + 1;
+        i++; // move to next, keep failed item in queue
+      }
     }
+    this.updateSyncStatus();
+    this.renderSyncQueueList();
+  }
 
-    async resumeScanning() {
-        if (this.html5QrCode && this.isScanning) {
-            await this.html5QrCode.resume();
-        }
+  startSyncInterval() {
+    // run periodically
+    setInterval(() => {
+      if (this.isOnline) this.processSyncQueue();
+    }, this.config.offlineSyncInterval);
+  }
+
+  // -----------------------
+  // NETWORK / STATUS UI
+  // -----------------------
+  handleNetworkChange(online) {
+    this.isOnline = online;
+    this.updateNetworkStatus();
+    if (online) {
+      // try process queue asap
+      this.processSyncQueue();
     }
+  }
 
-    // ====================================
-    // Google Sheets Integration
-    // ====================================
-    async fetchProductFromGoogleSheets(productId) {
-        if (!this.isApiConfigured) {
-            throw new Error('API not configured');
-        }
+  updateNetworkStatus() {
+    const on = navigator.onLine;
+    if (this.networkDot) this.networkDot.className = `status-dot ${on ? 'online' : 'offline'}`;
+    if (this.networkStatus) this.networkStatus.textContent = on ? 'Connected' : 'Offline';
+  }
 
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), this.config.apiTimeout);
-            
-            const response = await fetch(`${API_URL}?action=getProduct&productId=${encodeURIComponent(productId)}`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8'
-                },
-                signal: controller.signal
-            });
+  updateCameraStatus(state) {
+    if (this.cameraDot) this.cameraDot.className = `status-dot ${state === 'active' ? 'online' : 'offline'}`;
+    if (this.cameraStatus) this.cameraStatus.textContent = state === 'active' ? 'Camera Active' : 'Camera Inactive';
+  }
 
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const data = await response.json();
-            
-            if (data.success) {
-                return data.data;
-            } else {
-                console.warn('⚠️ Product not found:', data.message);
-                return null;
-            }
-        } catch (error) {
-            console.error('❌ API request failed:', error);
-            throw error;
-        }
+  updateSyncStatus() {
+    const pending = (this.syncQueue && this.syncQueue.length) || 0;
+    if (this.syncDot) this.syncDot.className = `status-dot ${pending === 0 ? 'online' : (this.syncQueue.some(i=>i.status==='failed') ? 'offline' : 'warning')}`;
+    if (this.syncStatus) this.syncStatus.textContent = pending === 0 ? 'All Synced' : `${pending} Pending`;
+    if (this.retrySyncBtn) {
+      if (this.syncQueue.some(i=>i.status === 'failed')) this.retrySyncBtn.classList.remove('hidden');
+      else this.retrySyncBtn.classList.add('hidden');
     }
+  }
 
-    async syncToGoogleSheets(transactionData) {
-        if (!this.isApiConfigured) {
-            throw new Error('API not configured');
-        }
+  // -----------------------
+  // UI: loading / toast
+  // -----------------------
+  createToastContainer() {
+    const c = document.createElement('div');
+    c.id = 'toast-container';
+    c.className = 'toast-container';
+    document.body.appendChild(c);
+    return c;
+  }
 
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), this.config.apiTimeout);
-            
-            const response = await fetch(API_URL, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'text/plain;charset=utf-8'
-                },
-                body: JSON.stringify({
-                    action: 'addTransaction',
-                    payload: transactionData
-                }),
-                signal: controller.signal
-            });
+  showToast(message, type = 'info') {
+    if (!this.toastContainer) this.toastContainer = this.createToastContainer();
+    const t = document.createElement('div');
+    t.className = `toast toast--${type}`;
+    t.textContent = message;
+    this.toastContainer.appendChild(t);
+    setTimeout(() => {
+      t.classList.add('toast--hide');
+      setTimeout(()=> t.remove(), 350);
+    }, this.config.toastDuration);
+  }
 
-            clearTimeout(timeoutId);
+  showLoading(msg) {
+    if (!this.loadingOverlay) return;
+    const p = this.loadingOverlay.querySelector('p');
+    if (p) p.textContent = msg || 'Loading...';
+    this.loadingOverlay.classList.remove('hidden');
+  }
+  hideLoading() {
+    if (!this.loadingOverlay) return;
+    this.loadingOverlay.classList.add('hidden');
+  }
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-
-            const result = await response.json();
-            
-            if (!result.success) {
-                throw new Error(result.message || 'Sync failed');
-            }
-            
-            console.log('✅ Synced to Google Sheets:', transactionData);
-            return result;
-        } catch (error) {
-            console.error('❌ Sync failed:', error);
-            throw error;
-        }
-    }
-
-    // ====================================
-    // Modal Management
-    // ====================================
-    showScanConfirmationModal(product) {
-        const nameEl = $('#scan-product-name');
-        const idEl = $('#scan-product-id');
-        const stockEl = $('#scan-current-stock');
-        
-        if (nameEl) nameEl.textContent = product.Product_Name || product.name || 'Unknown Product';
-        if (idEl) idEl.textContent = product.Product_ID || product.id || 'Unknown ID';
-        if (stockEl) stockEl.textContent = product.Current_Stock || product.currentStock || 0;
-        
-        this.currentProduct = { ...product };
-        this.showModal(this.scanConfirmationModal);
-    }
-
-    hideScanConfirmationModal() {
-        this.hideModal(this.scanConfirmationModal);
-        this.resumeScanning();
-    }
-
-    confirmScan() {
-        this.hideScanConfirmationModal();
-        this.populateProductInfo(this.currentProduct);
-        this.showToast(`Product loaded: ${this.currentProduct.Product_Name || this.currentProduct.name}`, 'success');
-    }
-
-    showIssuedToModal(product, quantity) {
-        const nameEl = $('#issue-product-name');
-        const qtyEl = $('#issue-quantity');
-        const inputEl = $('#issued-to-name');
-        
-        if (nameEl) nameEl.textContent = product.Product_Name || product.name;
-        if (qtyEl) qtyEl.textContent = quantity;
-        if (inputEl) inputEl.value = '';
-        
-        this.showModal(this.issuedToModal);
-        
-        // Focus on name input
-        setTimeout(() => {
-            if (inputEl) inputEl.focus();
-        }, 300);
-    }
-
-    hideIssuedToModal() {
-        this.hideModal(this.issuedToModal);
-    }
-
-    confirmIssue() {
-        const inputEl = $('#issued-to-name');
-        const personName = inputEl ? inputEl.value.trim() : '';
-        
-        if (!personName) {
-            this.showToast('Please enter person name', 'warning');
-            return;
-        }
-        
-        this.hideIssuedToModal();
-        this.processStockOut(personName);
-    }
-
-    showSyncQueueModal() {
-        this.renderSyncQueueList();
-        this.showModal(this.syncQueueModal);
-    }
-
-    hideSyncQueueModal() {
-        this.hideModal(this.syncQueueModal);
-    }
-
-    renderSyncQueueList() {
-        const container = $('#sync-queue-list');
-        
-        if (!container) return;
-        
-        if (this.syncQueue.length === 0) {
-            container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No pending items</p>';
-            return;
-        }
-        
-        container.innerHTML = this.syncQueue.map((item, index) => `
-            <div class="sync-queue-item">
-                <div class="queue-item-info">
-                    <h5>${item.type.toUpperCase()}: ${item.productName}</h5>
-                    <p>Qty: ${item.quantity} | ${new Date(item.timestamp).toLocaleString()}</p>
-                    ${item.issuedTo ? `<p>Issued to: ${item.issuedTo}</p>` : ''}
-                    <p>Status: ${item.status} (${item.retryCount || 0} retries)</p>
-                </div>
-                <div class="queue-item-actions">
-                    <button class="btn btn--sm btn--outline" onclick="qrApp.retrySyncItem(${index})">Retry</button>
-                    <button class="btn btn--sm btn--secondary" onclick="qrApp.removeSyncItem(${index})">Delete</button>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    showModal(modal) {
-        if (modal) {
-            modal.classList.remove('hidden');
-            document.body.style.overflow = 'hidden';
-        }
-    }
-
-    hideModal(modal) {
-        if (modal) {
-            modal.classList.add('hidden');
-            document.body.style.overflow = '';
-        }
-    }
-
-    // ====================================
-    // Transaction Processing
-    // ====================================
-    populateProductInfo(product) {
-        if (this.productNameEl) this.productNameEl.value = product.Product_Name || product.name || '';
-        if (this.productIdEl) this.productIdEl.value = product.Product_ID || product.id || '';
-        if (this.currentStockEl) this.currentStockEl.value = product.Current_Stock || product.currentStock || 0;
-        
-        if (this.enterQtyEl) this.enterQtyEl.value = '';
-        this.updateButtonStates();
-        
-        // Show product form and hide empty state
-        this.showProductForm();
-        
-        // Focus on quantity input
-        setTimeout(() => {
-            if (this.enterQtyEl) this.enterQtyEl.focus();
-        }, 100);
-    }
-
-    handleInventoryTransaction(type) {
-        if (!this.isApiConfigured) {
-            this.showToast('Please configure your Google Apps Script URL first', 'warning');
-            return;
-        }
-
-        const qty = parseInt(this.enterQtyEl?.value || 0);
-        
-        if (!qty || qty <= 0) {
-            this.showToast('Please enter a valid quantity', 'warning');
-            return;
-        }
-
-        if (!this.currentProduct) {
-            this.showToast('Please scan a product first', 'warning');
-            return;
-        }
-
-        const currentStock = parseInt(this.currentProduct.Current_Stock || this.currentProduct.currentStock || 0);
-
-        if (type === 'OUT') {
-            if (qty > currentStock) {
-                this.showToast('Insufficient stock for this transaction', 'error');
-                return;
-            }
-            this.showIssuedToModal(this.currentProduct, qty);
-        } else {
-            this.processStockIn(qty);
-        }
-    }
-
-    async processStockIn(quantity) {
-        this.showLoading('Processing stock IN...');
-        
-        const currentStock = parseInt(this.currentProduct.Current_Stock || this.currentProduct.currentStock || 0);
-        const transactionData = {
-            id: Date.now(),
-            timestamp: new Date().toISOString(),
-            productId: this.currentProduct.Product_ID || this.currentProduct.id,
-            productName: this.currentProduct.Product_Name || this.currentProduct.name,
-            type: 'IN',
-            quantity: quantity,
-            oldStock: currentStock,
-            newStock: currentStock + quantity,
-            user: 'QR Scanner User'
-        };
-
-        try {
-            if (this.isOnline && this.isApiConfigured) {
-                await this.syncToGoogleSheets(transactionData);
-                this.updateProductStock(transactionData);
-                this.hideLoading();
-                this.showToast(`Added ${quantity} items to inventory`, 'success');
-            } else {
-                this.addToSyncQueue(transactionData);
-                this.updateProductStock(transactionData);
-                this.hideLoading();
-                const message = !this.isOnline ? 
-                    `Added ${quantity} items (queued for sync - offline)` :
-                    `Added ${quantity} items (queued for sync - API not configured)`;
-                this.showToast(message, 'warning');
-            }
-        } catch (error) {
-            console.error('❌ Stock IN failed:', error);
-            this.addToSyncQueue(transactionData);
-            this.updateProductStock(transactionData);
-            this.hideLoading();
-            this.showToast(`Added ${quantity} items (sync failed, queued)`, 'warning');
-        }
-
-        this.clearForm();
-    }
-
-    async processStockOut(issuedTo) {
-        const quantity = parseInt(this.enterQtyEl?.value || 0);
-        this.showLoading('Processing stock OUT...');
-        
-        const currentStock = parseInt(this.currentProduct.Current_Stock || this.currentProduct.currentStock || 0);
-        const transactionData = {
-            id: Date.now(),
-            timestamp: new Date().toISOString(),
-            productId: this.currentProduct.Product_ID || this.currentProduct.id,
-            productName: this.currentProduct.Product_Name || this.currentProduct.name,
-            type: 'OUT',
-            quantity: quantity,
-            oldStock: currentStock,
-            newStock: currentStock - quantity,
-            issuedTo: issuedTo,
-            user: 'QR Scanner User'
-        };
-
-        try {
-            if (this.isOnline && this.isApiConfigured) {
-                await this.syncToGoogleSheets(transactionData);
-                this.updateProductStock(transactionData);
-                this.hideLoading();
-                this.showToast(`Issued ${quantity} items to ${issuedTo}`, 'success');
-            } else {
-                this.addToSyncQueue(transactionData);
-                this.updateProductStock(transactionData);
-                this.hideLoading();
-                const message = !this.isOnline ? 
-                    `Issued ${quantity} items (queued for sync - offline)` :
-                    `Issued ${quantity} items (queued for sync - API not configured)`;
-                this.showToast(message, 'warning');
-            }
-        } catch (error) {
-            console.error('❌ Stock OUT failed:', error);
-            this.addToSyncQueue(transactionData);
-            this.updateProductStock(transactionData);
-            this.hideLoading();
-            this.showToast(`Issued ${quantity} items (sync failed, queued)`, 'warning');
-        }
-
-        this.clearForm();
-    }
-
-    updateProductStock(transactionData) {
-        // Update current product
-        if (this.currentProduct) {
-            this.currentProduct.Current_Stock = transactionData.newStock;
-            this.currentProduct.currentStock = transactionData.newStock;
-        }
-        if (this.currentStockEl) {
-            this.currentStockEl.value = transactionData.newStock;
-        }
-    }
-
-    clearForm() {
-        if (this.enterQtyEl) this.enterQtyEl.value = '';
-        this.updateButtonStates();
-        if (this.enterQtyEl) this.enterQtyEl.focus();
-    }
-
-    // ====================================
-    // Sync Queue Management
-    // ====================================
-    addToSyncQueue(transactionData) {
-        transactionData.status = 'pending';
-        transactionData.retryCount = 0;
-        this.syncQueue.push(transactionData);
-        this.updateSyncStatus();
-    }
-
-    async processSyncQueue() {
-        if (!this.isOnline || this.syncQueue.length === 0 || !this.isApiConfigured) return;
-        
-        console.log(`🔄 Processing ${this.syncQueue.length} queued items...`);
-        
-        const pendingItems = this.syncQueue.filter(item => item.status === 'pending' || item.status === 'failed');
-        
-        for (let item of pendingItems) {
-            try {
-                await this.syncToGoogleSheets(item);
-                this.removeSyncItem(this.syncQueue.indexOf(item));
-                console.log('✅ Synced queued item:', item.productName);
-            } catch (error) {
-                item.status = 'failed';
-                item.retryCount = (item.retryCount || 0) + 1;
-                console.error(`❌ Failed to sync item (attempt ${item.retryCount}):`, error);
-            }
-        }
-        
-        this.updateSyncStatus();
-    }
-
-    async retrySyncItem(index) {
-        const item = this.syncQueue[index];
-        if (!item || !this.isApiConfigured) return;
-        
-        item.status = 'pending';
-        try {
-            await this.syncToGoogleSheets(item);
-            this.removeSyncItem(index);
-            this.showToast('Item synced successfully', 'success');
-        } catch (error) {
-            item.status = 'failed';
-            item.retryCount = (item.retryCount || 0) + 1;
-            this.showToast('Sync failed, try again later', 'error');
-        }
-        
-        this.updateSyncStatus();
-        this.renderSyncQueueList();
-    }
-
-    removeSyncItem(index) {
-        this.syncQueue.splice(index, 1);
-        this.updateSyncStatus();
-        if (this.syncQueueModal && !this.syncQueueModal.classList.contains('hidden')) {
-            this.renderSyncQueueList();
-        }
-    }
-
-    async retryAllSync() {
-        if (!this.isOnline || !this.isApiConfigured) {
-            this.showToast('Cannot sync: ' + (!this.isOnline ? 'No internet connection' : 'API not configured'), 'error');
-            return;
-        }
-        
-        this.showToast('Retrying all failed items...', 'info');
-        await this.processSyncQueue();
-        this.hideSyncQueueModal();
-    }
-
-    clearSyncQueue() {
-        this.syncQueue = [];
-        this.updateSyncStatus();
-        this.hideSyncQueueModal();
-        this.showToast('Sync queue cleared', 'info');
-    }
-
-    // ====================================
-    // Utility Methods
-    // ====================================
-    initializeButtonStates() {
-        if (this.inBtn) this.inBtn.disabled = true;
-        if (this.outBtn) this.outBtn.disabled = true;
-    }
-
-    updateButtonStates() {
-        const hasProduct = this.currentProduct !== null;
-        const qtyValue = this.enterQtyEl ? this.enterQtyEl.value.trim() : '';
-        const qty = parseInt(qtyValue);
-        const hasValidQuantity = qtyValue !== '' && !isNaN(qty) && qty > 0;
-        
-        const shouldEnable = hasProduct && hasValidQuantity;
-        
-        if (this.inBtn) this.inBtn.disabled = !shouldEnable;
-        if (this.outBtn) this.outBtn.disabled = !shouldEnable;
-    }
-
-    handleNetworkChange(isOnline) {
-        this.isOnline = isOnline;
-        this.updateNetworkStatus();
-        
-        if (isOnline) {
-            this.showToast('Connection restored', 'success');
-            if (this.isApiConfigured) {
-                setTimeout(() => this.processSyncQueue(), 1000);
-            }
-        } else {
-            this.showToast('Connection lost - operating in offline mode', 'warning');
-        }
-    }
-
-    handleVisibilityChange() {
-        if (document.hidden && this.isScanning) {
-            this.html5QrCode?.pause(true);
-        } else if (!document.hidden && this.isScanning) {
-            this.html5QrCode?.resume();
-        }
-    }
-
-    startSyncInterval() {
-        setInterval(() => {
-            if (this.isOnline && this.syncQueue.length > 0 && this.isApiConfigured) {
-                this.processSyncQueue();
-            }
-        }, this.config.offlineSyncInterval);
-    }
-
-    // ====================================
-    // UI Feedback Methods
-    // ====================================
-    showLoading(message = 'Loading...') {
-        if (this.loadingOverlay) {
-            const messageEl = this.loadingOverlay.querySelector('p');
-            if (messageEl) {
-                messageEl.textContent = message;
-            }
-            this.loadingOverlay.classList.remove('hidden');
-        }
-    }
-
-    hideLoading() {
-        if (this.loadingOverlay) {
-            this.loadingOverlay.classList.add('hidden');
-        }
-    }
-
-    showToast(message, type = 'info') {
-        const toast = document.createElement('div');
-        toast.className = `toast ${type}`;
-        
-        const icon = this.getToastIcon(type);
-        toast.innerHTML = `
-            <div class="toast-icon">${icon}</div>
-            <div class="toast-message">${message}</div>
-        `;
-        
-        this.toastContainer.appendChild(toast);
-        
-        // Trigger animation
-        setTimeout(() => toast.classList.add('show'), 100);
-        
-        // Auto remove
-        setTimeout(() => {
-            toast.classList.remove('show');
-            setTimeout(() => {
-                if (toast.parentNode) {
-                    this.toastContainer.removeChild(toast);
-                }
-            }, 300);
-        }, this.config.toastDuration);
-    }
-
-    getToastIcon(type) {
-        const icons = {
-            success: '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>',
-            error: '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clip-rule="evenodd"/></svg>',
-            warning: '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>',
-            info: '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"/></svg>'
-        };
-        return icons[type] || icons.info;
-    }
-
-    async cleanup() {
-        if (this.html5QrCode && this.isScanning) {
-            try {
-                await this.html5QrCode.stop();
-                this.html5QrCode.clear();
-            } catch (error) {
-                console.error('❌ Error during cleanup:', error);
-            }
-        }
-    }
+  // -----------------------
+  // Utilities
+  // -----------------------
+  clearAllData() {
+    localStorage.removeItem('qr_sync_queue_v1');
+    this.syncQueue = [];
+    this.updateSyncStatus();
+    this.renderSyncQueueList();
+  }
 }
 
-// ====================================
-// Application Initialization
-// ====================================
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('🎯 Initializing Production QR Scanner System...');
-    
-    const app = new QRScannerApp();
-    
-    // Make app globally available for debugging
-    window.qrApp = app;
-    
-    console.log('✅ QR Scanner System initialized successfully!');
-    console.log('📋 Configuration Status:');
-    console.log(`   - API Configured: ${app.isApiConfigured ? '✅' : '❌'}`);
-    console.log(`   - Network Status: ${app.isOnline ? '🌐 Online' : '📡 Offline'}`);
-    console.log('');
-    console.log('🛠️  Available Debug Commands:');
-    console.log('   - qrApp.testApiConnection() // Test Google Sheets connection');
-    console.log('   - qrApp.showSyncQueueModal() // View pending sync items');
-    console.log('   - qrApp.clearSyncQueue() // Clear all pending syncs');
-    console.log('');
-    console.log('ℹ️  To configure: Update API_URL at the top of app.js');
+// instantiate after DOM ready
+window.addEventListener('DOMContentLoaded', () => {
+  window.qrApp = new QRScannerApp();
 });
