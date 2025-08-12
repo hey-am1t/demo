@@ -3,7 +3,7 @@
 // =============================================
 
 // --- CONFIG: Replace with your deployed Google Apps Script Web App URL ---
-const API_URL = "https://script.google.com/macros/s/AKfycbytnnMefvRW7uWSaGngi4EXYomJqnri5WQT_0YlZ0ylo_OB7i-gXkdwUMR3BKMSY9Dg/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbzs-yNa5QQh6nvNF5oOy6Be-jYYLIELJBXZHBz5aEsJOEvBizz8y9hY8cnvXFo3Fsa6/exec";
 
 // small helpers
 const $ = (s) => document.querySelector(s);
