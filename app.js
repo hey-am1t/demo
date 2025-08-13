@@ -3,7 +3,7 @@
 // =============================================
 
 // 🔧 CONFIGURATION - UPDATE WITH YOUR GOOGLE APPS SCRIPT URL
-const API_URL = "https://script.google.com/macros/s/AKfycbyx03E74uZICLoJKrjT7SVowtUvlix4xuxqWR6s0xZt6pwV2vxTsgroPM6Q-sgRjnFk_g/exec";
+const API_URL = "https://script.google.com/macros/s/AKfycbz4kLumSg3YYabTmJQWgYUAfGIbyHRnRCufRMGYSXbMTTch5bzkT8szMfOyKwO36EflJA/exec";
 
 // Helper functions
 const $ = (sel) => document.querySelector(sel);
@@ -519,7 +519,9 @@ class QRScannerApp {
         const stockEl = $('#scan-current-stock');
         
         if (nameEl) nameEl.textContent = product.Product_Name || product.name || 'Unknown Product';
-        if (idEl) idEl.textContent = product.Product_ID || product.id || 'Unknown ID';
+        if (idEl) {
+    idEl.textContent = product.Product_ID || product.ProductId || product.id || product.ID || 'Unknown ID';
+}
         if (stockEl) stockEl.textContent = product.Current_Stock || product.currentStock || 0;
         
         this.currentProduct = { ...product };
@@ -532,10 +534,17 @@ class QRScannerApp {
     }
 
     confirmScan() {
-        this.hideScanConfirmationModal();
-        this.populateProductInfo(this.currentProduct);
-        this.showToast(`Product loaded: ${this.currentProduct.Product_Name || this.currentProduct.name}`, 'success');
-    }
+    this.hideScanConfirmationModal();
+
+    // ✅ Ensure Product_ID always exists
+    this.currentProduct = {
+        ...this.currentProduct,
+        Product_ID: this.currentProduct.Product_ID || this.currentProduct.ProductId || this.currentProduct.id || this.currentProduct.ID || ''
+    };
+
+    this.populateProductInfo(this.currentProduct);
+    this.showToast(`Product loaded: ${this.currentProduct.Product_Name || this.currentProduct.name}`, 'success');
+}
 
     showIssuedToModal(product, quantity) {
         const nameEl = $('#issue-product-name');
