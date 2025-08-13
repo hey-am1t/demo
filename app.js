@@ -381,14 +381,18 @@ class QRScannerApp {
     }
 
     async onScanSuccess(decodedText, decodedResult) {
-        console.log('📱 QR Code detected:', decodedText);
-        
-        // Temporarily stop scanning
-        if (this.html5QrCode && this.isScanning) {
-            await this.html5QrCode.pause(true);
-        }
-        
-        this.scannedQRCode = decodedText;
+    console.log('📱 QR Code detected (raw):', decodedText);
+
+    // Normalize the scanned text
+    decodedText = decodedText.trim().toLowerCase();
+    console.log('📱 QR Code normalized:', decodedText);
+    
+    // Temporarily stop scanning
+    if (this.html5QrCode && this.isScanning) {
+        await this.html5QrCode.pause(true);
+    }
+    
+    this.scannedQRCode = decodedText;
         
         // Show loading while fetching product data
         this.showLoading('Fetching product data...');
