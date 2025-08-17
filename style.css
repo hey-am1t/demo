@@ -1609,3 +1609,39 @@ body {
   color: var(--color-info);
   border-left: 4px solid var(--color-info);
 }
+/* Add to end of CSS file */
+/* Fix for modal z-index */
+.modal {
+  z-index: 10000;
+}
+
+/* Prevent button double clicks */
+button:disabled {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* Enhance sync status display */
+#sync-status {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sync-count-badge {
+  background: var(--color-error);
+  color: white;
+  border-radius: 10px;
+  padding: 2px 8px;
+  font-size: 0.8em;
+}
+
+.status-dot.pulsing {
+  animation: pulse-opacity 1.5s infinite;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
