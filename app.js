@@ -22,6 +22,7 @@ class QRScannerApp {
     this.syncQueue = [];
     this.isOnline = navigator.onLine;
     this.retryLimit = 3;
+    this.processingTransaction = false;
 
     // config
     this.config = {
@@ -429,6 +430,9 @@ class QRScannerApp {
   // INVENTORY TRANSACTION FLOW
   // -----------------------
   handleInventoryTransaction(type) {
+    if (this.processingTransaction) return; // PREVENT DOUBLE SUBMIT
+    this.processingTransaction = true;
+    
     const rawQty = (this.enterQtyEl?.value || '').toString().trim();
     const qty = parseInt(rawQty, 10);
     if (isNaN(qty) || qty <= 0) {
@@ -448,6 +452,7 @@ class QRScannerApp {
     if (type === 'OUT') {
       // ask for issued-to
       this.showIssuedToModal(this.currentProduct, qty);
+      this.processingTransaction = false; // RESET HERE FOR MODAL FLOW
       return;
     }
 
@@ -489,46 +494,82 @@ class QRScannerApp {
       this.clearForm();
     }
   }
-
-  async processStockOut(issuedTo) {
-    const qty = parseInt(this.enterQtyEl?.value || 0, 10);
-    const currentStock = Number(this.currentProduct.Current_Stock || this.currentProduct.currentStock || 0);
-
-    const tx = {
-      id: Date.now(),
-      timestamp: new Date().toISOString(),
-      productId: this.currentProduct.Product_ID || this.currentProduct.id,
-      productName: this.currentProduct.Product_Name || this.currentProduct.name,
-      type: 'OUT',
-      quantity: qty,
-      oldStock: currentStock,
-      newStock: currentStock - qty,
-      issuedTo,
-      user: 'QR Scanner User'
-    };
-
-    this.showLoading('Processing stock OUT...');
-    try {
-      if (this.isOnline) {
-        await this.syncToGoogleSheets(tx);
-        this.updateProductStock(tx);
-        this.showToast(`Issued ${qty} to ${issuedTo}`, 'success');
-        this.updateSyncStatus(); // ADDED: Update status after sync
-      } else {
-        this.addToSyncQueue(tx);
-        this.updateProductStock(tx);
-        this.showToast(`Issued ${qty} (queued for sync)`, 'warning');
-      }
-    } catch (err) {
-      console.error('processStockOut error', err);
-      this.addToSyncQueue(tx);
-      this.updateProductStock(tx);
-      this.showToast('Sync failed, item queued', 'warning');
-    } finally {
-      this.hideLoading();
-      this.clearForm();
+async processStockOut(issuedTo) {
+    // Safeguard against concurrent execution
+    if (this.processingTransaction) {
+        console.warn('Transaction already in progress');
+        return;
     }
-  }
+    
+    this.processingTransaction = true;
+    
+    try {
+        // Parse and validate quantity
+        const qty = parseInt(this.enterQtyEl?.value || 0, 10);
+        if (isNaN(qty) || qty <= 0) {
+            this.showToast('Please enter a valid positive quantity', 'error');
+            return;
+        }
+
+        // Get current stock with consistent property access
+        const currentStock = Number(
+            this.currentProduct.Current_Stock ?? 
+            this.currentProduct.currentStock ?? 
+            0
+        );
+
+        // Validate stock availability
+        if (qty > currentStock) {
+            this.showToast(`Not enough stock. Available: ${currentStock}`, 'error');
+            return;
+        }
+
+        // Prepare transaction object
+        const tx = {
+            id: Date.now(),
+            timestamp: new Date().toISOString(),
+            productId: this.currentProduct.Product_ID ?? this.currentProduct.id,
+            productName: this.currentProduct.Product_Name ?? this.currentProduct.name,
+            type: 'OUT',
+            quantity: qty,
+            oldStock: currentStock,
+            newStock: currentStock - qty,
+            issuedTo: issuedTo || 'Unknown',
+            user: 'QR Scanner User',
+            status: 'pending'
+        };
+
+        this.showLoading('Processing stock OUT...');
+        
+        try {
+            if (this.isOnline) {
+                await this.syncToGoogleSheets(tx);
+                tx.status = 'synced';
+                this.updateProductStock(tx);
+                this.showToast(`Successfully issued ${qty} to ${tx.issuedTo}`, 'success');
+                this.updateSyncStatus();
+            } else {
+                tx.status = 'queued';
+                this.addToSyncQueue(tx);
+                this.updateProductStock(tx);
+                this.showToast(`Issued ${qty} (queued for sync)`, 'warning');
+            }
+        } catch (syncError) {
+            console.error('Sync error:', syncError);
+            tx.status = 'failed';
+            this.addToSyncQueue(tx);
+            this.updateProductStock(tx);
+            this.showToast('Sync failed, item queued for retry', 'warning');
+        }
+    } catch (error) {
+        console.error('Unexpected error in processStockOut:', error);
+        this.showToast('An unexpected error occurred', 'error');
+    } finally {
+        this.processingTransaction = false;
+        this.hideLoading();
+        this.clearForm();
+    }
+}
 
   // -----------------------
   // PRODUCT FORM UI helpers
@@ -635,31 +676,47 @@ class QRScannerApp {
 
   renderSyncQueueList() {
     if (!this.syncQueueList) return;
+    
+    // Update modal title with queue count
+    const title = this.syncQueueModal.querySelector('h3');
+    if (title) {
+        title.textContent = `Sync Queue (${this.syncQueue.length} items)`;
+    }
+
     if (this.syncQueue.length === 0) {
-      this.syncQueueList.innerHTML = '<p style="text-align:center;color:#666;padding:18px">No pending items</p>';
-      return;
+        this.syncQueueList.innerHTML = '<p style="text-align:center;color:#666;padding:18px">No pending items</p>';
+        return;
     }
 
     this.syncQueueList.innerHTML = this.syncQueue.map((item, i) => {
-      const issuedToHtml = item.issuedTo ? `<p>Issued to: ${this.escapeHtml(item.issuedTo)}</p>` : '';
-      const status = item.status || 'pending';
-      const time = item.timestamp ? new Date(item.timestamp).toLocaleString() : new Date(item.id ? Number(item.id) : Date.now()).toLocaleString();
-      return `
-        <div class="sync-queue-item" style="border-bottom:1px solid #eee;padding:12px 8px;display:flex;justify-content:space-between;gap:12px">
-          <div style="flex:1">
-            <h5 style="margin:0 0 6px 0">${this.escapeHtml((item.type||'').toUpperCase())}: ${this.escapeHtml(item.productName || item.product || '')}</h5>
-            <p style="margin:0 0 4px 0">Qty: ${this.escapeHtml(String(item.quantity || '0'))} | ${this.escapeHtml(time)}</p>
-            ${issuedToHtml}
-            <p style="margin:6px 0 0 0;color:#666">Status: ${this.escapeHtml(status)} (${item.retryCount || 0} retries)</p>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
-            <button class="btn btn--sm btn--outline" onclick="qrApp.retrySyncItem(${i})">Retry</button>
-            <button class="btn btn--sm btn--secondary" onclick="qrApp.removeSyncItem(${i})">Delete</button>
-          </div>
-        </div>
-      `;
+        const issuedToHtml = item.issuedTo ? `<p>Issued to: ${this.escapeHtml(item.issuedTo)}</p>` : '';
+        const status = item.status || 'pending';
+        const time = item.timestamp ? new Date(item.timestamp).toLocaleString() : 
+                     new Date(item.id ? Number(item.id) : Date.now()).toLocaleString();
+        
+        // Determine status color
+        let statusColor = '#666'; // default
+        if (status === 'failed') statusColor = 'var(--color-error)';
+        if (status === 'pending') statusColor = 'var(--color-warning)';
+        
+        return `
+            <div class="sync-queue-item" style="border-bottom:1px solid #eee;padding:12px 8px;display:flex;justify-content:space-between;gap:12px">
+                <div style="flex:1">
+                    <h5 style="margin:0 0 6px 0">${this.escapeHtml((item.type||'').toUpperCase())}: ${this.escapeHtml(item.productName || item.product || '')}</h5>
+                    <p style="margin:0 0 4px 0">Qty: ${this.escapeHtml(String(item.quantity || '0'))} | ${this.escapeHtml(time)}</p>
+                    ${issuedToHtml}
+                    <p style="margin:6px 0 0 0;color:${statusColor}">
+                        Status: ${this.escapeHtml(status)} (${item.retryCount || 0} retries)
+                    </p>
+                </div>
+                <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-end">
+                    <button class="btn btn--sm btn--outline" onclick="qrApp.retrySyncItem(${i})">Retry</button>
+                    <button class="btn btn--sm btn--secondary" onclick="qrApp.removeSyncItem(${i})">Delete</button>
+                </div>
+            </div>
+        `;
     }).join('');
-  }
+}
 
   escapeHtml(str) {
     if (!str) return '';
@@ -743,11 +800,18 @@ class QRScannerApp {
   }
 
    updateSyncStatus() {
-    const pending = (this.syncQueue && this.syncQueue.length) || 0;
+    const pending = this.syncQueue.length;
+    const hasFailures = this.syncQueue.some(i => i.status === 'failed');
+    
     if (this.syncDot) {
-      const baseClass = pending === 0 ? 'online' : 
-                        (this.syncQueue.some(i => i.status === 'failed') ? 'offline' : 'warning');
-      this.syncDot.className = `status-dot ${baseClass}${pending > 0 ? ' pulsing' : ''}`;
+      this.syncDot.className = 'status-dot ' + 
+        (pending === 0 ? 'online' : (hasFailures ? 'offline' : 'warning'));
+      
+      if (pending > 0) {
+        this.syncDot.classList.add('pulsing');
+      } else {
+        this.syncDot.classList.remove('pulsing');
+      }
     }
     
     if (this.syncStatus) {
