@@ -1577,3 +1577,35 @@ body {
   outline: var(--focus-outline);
   outline-offset: 2px;
 }
+
+/* Add to end of style.css */
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.status-dot.pulsing {
+  animation: pulse-opacity 1.5s infinite;
+}
+
+.pulsing-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: var(--color-warning);
+  border-radius: 50%;
+  animation: pulse-opacity 1.5s infinite;
+  margin-left: 5px;
+}
+
+/* Success toast with checkmark */
+.toast.success .toast-icon {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24' fill='none' stroke='%23339000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 11.08V12a10 10 0 1 1-5.93-9.14'%3E%3C/path%3E%3Cpolyline points='22 4 12 14.01 9 11.01'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+/* Network reconnect notification */
+.network-reconnect {
+  background-color: rgba(var(--color-info-rgb), var(--status-bg-opacity));
+  color: var(--color-info);
+  border-left: 4px solid var(--color-info);
+}
