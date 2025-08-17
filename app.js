@@ -473,6 +473,7 @@ class QRScannerApp {
         await this.syncToGoogleSheets(transactionData);
         this.updateProductStock(transactionData);
         this.showToast(`Added ${transactionData.quantity} to inventory`, 'success');
+        this.updateSyncStatus(); // ADDED: Update status after sync
       } else {
         this.addToSyncQueue(transactionData);
         this.updateProductStock(transactionData);
@@ -512,6 +513,7 @@ class QRScannerApp {
         await this.syncToGoogleSheets(tx);
         this.updateProductStock(tx);
         this.showToast(`Issued ${qty} to ${issuedTo}`, 'success');
+        this.updateSyncStatus(); // ADDED: Update status after sync
       } else {
         this.addToSyncQueue(tx);
         this.updateProductStock(tx);
@@ -547,7 +549,6 @@ class QRScannerApp {
     this.currentProduct.Current_Stock = transaction.newStock;
     this.currentProduct.currentStock = transaction.newStock;
     if (this.currentStockEl) this.currentStockEl.value = transaction.newStock;
-    this.updateSyncStatus(); // maybe reflect pending
   }
 
   clearForm() {
@@ -666,18 +667,17 @@ class QRScannerApp {
   }
 
   // process single queued item (used by retry)
-  async processSingleQueueItem(item, index) {
+ async processSingleQueueItem(item, index) {
     try {
       await this.syncToGoogleSheets(item);
-      // remove the item at index (if it still exists)
-      const idx = this.syncQueue.indexOf(item);
-      if (idx !== -1) {
-        this.syncQueue.splice(idx, 1);
+      // Remove the item at index (if it still exists)
+      if (this.syncQueue[index] === item) {
+        this.syncQueue.splice(index, 1);
         this.saveQueueToStorage();
+        this.updateSyncStatus();
+        this.renderSyncQueueList();
+        this.showToast('Queued item synced', 'success');
       }
-      this.updateSyncStatus();
-      this.renderSyncQueueList();
-      this.showToast('Queued item synced', 'success');
     } catch (err) {
       console.error('processSingleQueueItem error', err);
       item.status = 'failed';
@@ -742,13 +742,28 @@ class QRScannerApp {
     if (this.cameraStatus) this.cameraStatus.textContent = state === 'active' ? 'Camera Active' : 'Camera Inactive';
   }
 
-  updateSyncStatus() {
+   updateSyncStatus() {
     const pending = (this.syncQueue && this.syncQueue.length) || 0;
-    if (this.syncDot) this.syncDot.className = `status-dot ${pending === 0 ? 'online' : (this.syncQueue.some(i=>i.status==='failed') ? 'offline' : 'warning')}`;
-    if (this.syncStatus) this.syncStatus.textContent = pending === 0 ? 'All Synced' : `${pending} Pending`;
+    if (this.syncDot) {
+      const baseClass = pending === 0 ? 'online' : 
+                        (this.syncQueue.some(i => i.status === 'failed') ? 'offline' : 'warning');
+      this.syncDot.className = `status-dot ${baseClass}${pending > 0 ? ' pulsing' : ''}`;
+    }
+    
+    if (this.syncStatus) {
+      if (pending > 0) {
+        this.syncStatus.innerHTML = `${pending} Pending <span class="pulsing-dot"></span>`;
+      } else {
+        this.syncStatus.textContent = 'All Synced';
+      }
+    }
+    
     if (this.retrySyncBtn) {
-      if (this.syncQueue.some(i=>i.status === 'failed')) this.retrySyncBtn.classList.remove('hidden');
-      else this.retrySyncBtn.classList.add('hidden');
+      if (this.syncQueue.some(i => i.status === 'failed')) {
+        this.retrySyncBtn.classList.remove('hidden');
+      } else {
+        this.retrySyncBtn.classList.add('hidden');
+      }
     }
   }
 
